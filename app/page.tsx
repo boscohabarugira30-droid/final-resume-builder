@@ -12,7 +12,7 @@ export default function BoscoApp() {
   const [themeColor, setThemeColor] = useState("#0a1e3c"); 
   const [typingText, setTypingText] = useState("");
   const [photo, setPhoto] = useState<string | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // Mobile sidebar toggle
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   
   const visionRef = useRef<HTMLDivElement>(null);
   const goalRef = useRef<HTMLDivElement>(null);
@@ -35,7 +35,6 @@ export default function BoscoApp() {
 
   const colors = ["#0a1e3c", "#1e40af", "#065f46", "#991b1b", "#6b21a8", "#111827", "#f97316"];
 
-  // FIXED: Adjusted function signature to match React Ref standards
   const scrollTo = (ref: React.RefObject<HTMLDivElement | null>) => {
     if (ref.current) {
       ref.current.scrollIntoView({ behavior: "smooth" });
@@ -282,7 +281,10 @@ export default function BoscoApp() {
             <textarea placeholder="Experience" className="w-full p-3 bg-slate-50 rounded-xl border border-slate-300 text-xs h-32" value={data.experience} onChange={e => update("experience", e.target.value)} />
             <input placeholder="Skills" className="w-full p-3 bg-slate-50 rounded-xl border border-slate-300 text-xs" value={data.skills} onChange={e => update("skills", e.target.value)} />
           </div>
-          <button onClick={() => {setIsSidebarOpen(false); window.print();}} className="lg:hidden bg-blue-600 text-white w-full py-4 rounded-xl font-black uppercase">Preview & Download</button>
+          {/* MOBILE PREVIEW/DOWNLOAD BUTTON */}
+          <button onClick={() => {setIsSidebarOpen(false); setTimeout(() => window.print(), 300);}} className="lg:hidden bg-blue-600 text-white w-full py-4 rounded-xl font-black uppercase flex items-center justify-center gap-3">
+            <Printer size={18}/> Download PDF
+          </button>
         </div>
       </aside>
 
@@ -295,9 +297,8 @@ export default function BoscoApp() {
         </div>
 
         {/* Scaled Preview for Mobile Viewport */}
-        <div className="w-full flex justify-center origin-top scale-[0.4] sm:scale-[0.6] md:scale-[0.8] lg:scale-100 mb-[-400px] md:mb-0">
+        <div className="w-full flex justify-center origin-top scale-[0.35] sm:scale-[0.55] md:scale-[0.75] lg:scale-100 mb-[-500px] md:mb-0">
           <div id="resume-document" className={`w-[210mm] min-h-[297mm] bg-white shadow-2xl flex flex-col print-bg overflow-hidden`}>
-              {/* Content remains exactly the same as your provided code */}
               {template === 'corporate' || template === 'grid' ? (
                 <div className="p-16 space-y-8 flex-1">
                    <div className="text-center space-y-4 border-b pb-8">
@@ -347,7 +348,16 @@ export default function BoscoApp() {
           @media print {
             .no-print { display: none !important; }
             body { background: white !important; margin: 0; padding: 0; }
-            #resume-document { shadow: none !important; margin: 0 !important; width: 210mm; min-height: 297mm; transform: scale(1) !important; }
+            #resume-document { 
+              box-shadow: none !important; 
+              margin: 0 !important; 
+              width: 210mm !important; 
+              height: 297mm !important; 
+              transform: scale(1) !important;
+              position: absolute;
+              top: 0;
+              left: 0;
+            }
             .print-bg { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           }
           .animate-bounce-slow { animation: bounce-slow 4s ease-in-out infinite; }
