@@ -1,5 +1,5 @@
-"use client";
 // @ts-nocheck
+"use client";
 import React, { useState, useEffect, useRef } from "react";
 import {
   Sparkles, Heart, ArrowLeft, Mail, Phone, Layout,
@@ -561,8 +561,8 @@ function PDFDownloadButton({ dark, docId = "resume-document", label = "Download 
       clone.style.pageBreakAfter = 'avoid';
       // Remove any scale transforms from children
       clone.querySelectorAll && clone.querySelectorAll('[style*="scale"]').forEach(function(el){
-        el.style.transform = 'none';
-        el.style.marginBottom = '0';
+        (el as HTMLElement).style.transform = 'none';
+        (el as HTMLElement).style.marginBottom = '0';
       });
       const printWindow = window.open('', '_blank', 'width=794,height=1123,menubar=no,toolbar=no,location=no,status=no');
       if (!printWindow) { window.print(); setLoading(false); return; }
