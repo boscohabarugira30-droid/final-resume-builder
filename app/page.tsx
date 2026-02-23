@@ -550,20 +550,55 @@ function PDFDownloadButton({ dark, docId = "resume-document", label = "Download 
       if (!el) { window.print(); setLoading(false); return; }
       const clone = el.cloneNode(true) as HTMLElement;
       clone.style.transform = 'none';
-      clone.style.transformOrigin = 'unset';
+      clone.style.transformOrigin = 'top left';
       clone.style.marginBottom = '0';
+      clone.style.marginTop = '0';
       clone.style.position = 'static';
-      const printWindow = window.open('', '_blank');
+      clone.style.width = '210mm';
+      clone.style.maxWidth = '210mm';
+      clone.style.minHeight = '297mm';
+      clone.style.overflow = 'hidden';
+      clone.style.pageBreakAfter = 'avoid';
+      // Remove any scale transforms from children
+      clone.querySelectorAll && clone.querySelectorAll('[style*="scale"]').forEach(function(el){
+        el.style.transform = 'none';
+        el.style.marginBottom = '0';
+      });
+      const printWindow = window.open('', '_blank', 'width=794,height=1123,menubar=no,toolbar=no,location=no,status=no');
       if (!printWindow) { window.print(); setLoading(false); return; }
       const styles = Array.from(document.styleSheets).map(sheet => {
         try { return Array.from(sheet.cssRules).map(r => r.cssText).join('\n'); } catch { return ''; }
       }).join('\n');
       printWindow.document.write(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>${label}</title>
+<html><head><meta charset="utf-8"><title></title>
 <script src="https://cdn.tailwindcss.com"><\/script>
-<style>${styles}*{box-sizing:border-box}html,body{margin:0!important;padding:0!important;background:white!important}@page{margin:0;size:A4}@media print{html,body{width:210mm;overflow:hidden}.print-bg{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}</style>
+<style>
+${styles}
+*{box-sizing:border-box}
+html,body{margin:0!important;padding:0!important;background:white!important;width:210mm}
+@page{
+  margin:10mm 12mm 10mm 12mm !important;
+  size:A4 portrait;
+}
+@media print{
+  html,body{width:210mm;min-height:auto;overflow:hidden;background:white!important;margin:0!important;padding:0!important}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
+  .text-slate-400,.text-slate-300,.text-slate-200{color:#374151!important}
+  html{height:auto!important}
+  body>*{page-break-after:avoid!important}
+}
+</style>
 </head><body>${clone.outerHTML}
-<script>window.onload=function(){setTimeout(function(){window.print();window.close();},700);};<\/script>
+<script>
+window.onload=function(){
+  // Remove all margin from page
+  document.title = '';
+  setTimeout(function(){
+    window.print();
+    setTimeout(function(){window.close();},500);
+  },800);
+};
+<\/script>
 </body></html>`);
       printWindow.document.close();
     } catch { window.print(); }
@@ -571,11 +606,18 @@ function PDFDownloadButton({ dark, docId = "resume-document", label = "Download 
   };
 
   return (
-    <button onClick={download} disabled={loading}
-      className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[9px] font-black uppercase bg-green-600 text-white hover:bg-green-500 transition-colors disabled:opacity-60">
-      {loading ? <Loader size={11} className="animate-spin"/> : <Download size={11}/>}
-      {loading ? "Preparing..." : label}
-    </button>
+    <div className="relative group">
+      <button onClick={download} disabled={loading}
+        className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[9px] font-black uppercase bg-green-600 text-white hover:bg-green-500 transition-colors disabled:opacity-60">
+        {loading ? <Loader size={11} className="animate-spin"/> : <Download size={11}/>}
+        {loading ? "Preparing..." : label}
+      </button>
+      <div className="absolute bottom-full left-0 mb-2 w-64 bg-slate-900 text-white text-[9px] rounded-lg p-2.5 hidden group-hover:block z-50 leading-relaxed shadow-xl">
+        <p className="font-black mb-1 text-green-400">📋 For clean PDF (no watermarks):</p>
+        <p>In the print dialog → <strong>More settings</strong> → uncheck <strong>"Headers and footers"</strong></p>
+        <p className="mt-1 text-slate-400">Also set margins to "None" for best results.</p>
+      </div>
+    </div>
   );
 }
 
@@ -1666,7 +1708,7 @@ export default function BoscoApp() {
         .animate-delay-1{animation-delay:1s}.animate-delay-2{animation-delay:2s}
         .snap-x{scroll-snap-type:x mandatory}.snap-center{scroll-snap-align:center}
         #slider::-webkit-scrollbar{display:none}
-        @media print{.no-print{display:none!important}body{background:white!important;margin:0}.print-bg{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}
+        @page{margin:12mm 12mm 12mm 12mm!important;size:A4 portrait}@media print{.no-print{display:none!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}body{background:white!important;margin:0!important;padding:0!important}.text-slate-400,.text-slate-300{color:#374151!important}.text-gray-400,.text-gray-300{color:#374151!important}[class*="text-slate-4"],[class*="text-slate-3"]{color:#374151!important}html{height:auto!important;overflow:hidden!important}body>*{page-break-after:avoid!important}}
       `}</style>
     </div>
   );
@@ -1846,7 +1888,7 @@ export default function BoscoApp() {
           </div>
         </div>
 
-        <style>{`@media print{.no-print{display:none!important}body{background:white!important;margin:0}.print-bg{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}`}</style>
+        <style>{`@page{margin:12mm 12mm 12mm 12mm!important;size:A4 portrait}@media print{.no-print{display:none!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}body{background:white!important;margin:0!important;padding:0!important}.text-slate-400,.text-slate-300{color:#374151!important}.text-gray-400,.text-gray-300{color:#374151!important}[class*="text-slate-4"],[class*="text-slate-3"]{color:#374151!important}html{height:auto!important;overflow:hidden!important}body>*{page-break-after:avoid!important}}`}</style>
       </div>
     );
   }
@@ -1978,7 +2020,7 @@ export default function BoscoApp() {
         </div>
       </div>
 
-      <style>{`@media print{.no-print{display:none!important}body{background:white!important;margin:0}.print-bg{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}`}</style>
+      <style>{`@page{margin:12mm 12mm 12mm 12mm!important;size:A4 portrait}@media print{.no-print{display:none!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}body{background:white!important;margin:0!important;padding:0!important}.text-slate-400,.text-slate-300{color:#374151!important}.text-gray-400,.text-gray-300{color:#374151!important}[class*="text-slate-4"],[class*="text-slate-3"]{color:#374151!important}html{height:auto!important;overflow:hidden!important}body>*{page-break-after:avoid!important}}`}</style>
     </div>
   );
 }
