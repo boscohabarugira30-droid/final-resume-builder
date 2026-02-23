@@ -1,14 +1,15 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Sparkles, Heart, ArrowLeft, Mail, Phone, Layout, Target,
-  Camera, Printer, Palette, Quote, Zap, Layers, Link as LinkIcon,
+  Sparkles, Heart, ArrowLeft, Mail, Phone, Layout,
+  Camera, Printer, Palette, Zap,
   Linkedin, FileText, ChevronRight, MapPin, Globe, Star, Trophy,
-  Briefcase, GraduationCap, Code, User as UserIcon, CheckCircle,
-  AlertCircle, TrendingUp, Search, PenTool, BarChart2, X, ChevronDown, ChevronUp, Loader,
-  Download, Save, FolderOpen, Moon, Sun, Plus, Trash2, Clock, Filter, Tag,
-  MessageSquare, ThumbsUp, SpellCheck, Wand2, Import, ExternalLink, Copy, RefreshCw,
-  Bold, Italic, List, GripVertical, QrCode, Briefcase as BriefcaseIcon, Building2, DollarSign, MapPin as MapPinIcon, ExternalLink as ExternalLinkIcon,
+  Briefcase, User as UserIcon, CheckCircle,
+  AlertCircle, TrendingUp, Search, PenTool, BarChart2, X, Loader,
+  Download, Save, FolderOpen, Moon, Sun, Plus, Trash2, Clock,
+  ThumbsUp, SpellCheck, Wand2, ExternalLink,
+  Bold, Italic, List, GripVertical, QrCode, Briefcase as BriefcaseIcon, Building2,
+  MapPin as MapPinIcon, ExternalLink as ExternalLinkIcon,
   Menu, ChevronLeft
 } from "lucide-react";
 
@@ -1414,7 +1415,7 @@ export default function BoscoApp() {
 
   const DEFAULT_LABELS = { summary:"Professional Summary", experience:"Professional History", achievements:"Achievements", education:"Education", certifications:"Certifications", skills:"Skills" };
   const [sectionLabels, setSectionLabels] = useState(DEFAULT_LABELS);
-  const updateLabel = (key: keyof typeof DEFAULT_LABELS, val: string) => setSectionLabels(p => ({ ...p, [key]: val }));
+  const updateLabel = (key: string, val: string) => setSectionLabels(p => ({ ...p, [key]: val }));
   const resetLabels = () => setSectionLabels(DEFAULT_LABELS);
 
   const LABEL_PRESETS = [
@@ -1693,7 +1694,7 @@ export default function BoscoApp() {
         <div className={`flex items-center gap-3 ${dark?'bg-slate-800 border-slate-700':'bg-slate-50'} p-3 rounded-xl border-2 border-dashed`}>
           <div className={`w-14 h-14 ${dark?'bg-slate-700':'bg-white'} rounded-lg shadow-inner flex items-center justify-center overflow-hidden relative shrink-0`}>
             {photo?<img src={photo} className="w-full h-full object-cover" alt="Profile"/>:<Camera className={d.muted} size={18}/>}
-            <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e=>e.target.files&&setPhoto(URL.createObjectURL(e.target.files[0]))}/>
+            <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e: React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files;if(f&&f[0])setPhoto(URL.createObjectURL(f[0]))}}/>
           </div>
           <div className="flex-1 space-y-2">
             <p className={`text-[9px] font-black uppercase ${d.muted}`}>Photo · tap to upload</p>
@@ -1875,7 +1876,7 @@ export default function BoscoApp() {
           <div className={`flex items-center gap-3 ${dark?'bg-slate-800 border-slate-700':'bg-slate-50'} p-3 rounded-2xl border-2 border-dashed`}>
             <div className={`w-16 h-16 ${dark?'bg-slate-700':'bg-white'} rounded-xl shadow-inner flex items-center justify-center overflow-hidden relative`}>
               {photo?<img src={photo} className="w-full h-full object-cover" alt="Profile"/>:<Camera className={d.muted}/>}
-              <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e=>e.target.files&&setPhoto(URL.createObjectURL(e.target.files[0]))}/>
+              <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e: React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files;if(f&&f[0])setPhoto(URL.createObjectURL(f[0]))}}/>
             </div>
             <p className={`text-[9px] font-black uppercase ${d.muted}`}>Profile Photo · click to upload</p>
           </div>
