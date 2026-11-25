@@ -1,241 +1,499 @@
 // @ts-nocheck
 "use client";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Sparkles, Heart, ArrowLeft, Mail, Phone, Layout,
-  Camera, Printer, Palette, Zap,
-  Linkedin, FileText, ChevronRight, MapPin, Globe, Star, Trophy,
-  Briefcase, User as UserIcon, CheckCircle,
-  AlertCircle, TrendingUp, Search, PenTool, BarChart2, X, Loader,
-  Download, Save, FolderOpen, Moon, Sun, Plus, Trash2, Clock,
-  ThumbsUp, SpellCheck, Wand2, ExternalLink,
-  Bold, Italic, List, GripVertical, QrCode, Briefcase as BriefcaseIcon, Building2,
-  MapPin as MapPinIcon, ExternalLink as ExternalLinkIcon,
-  Menu, ChevronLeft
+  Sparkles, Heart, ArrowLeft, Mail, Phone, Layout, Camera, Printer, Palette,
+  Linkedin, FileText, ChevronRight, ChevronDown, MapPin, Globe, Star, Trophy,
+  User as UserIcon, CheckCircle, AlertCircle, Search, PenTool, BarChart2, X,
+  Loader, Download, Save, FolderOpen, Moon, Sun, Plus, Trash2, Clock,
+  SpellCheck, Wand2, ExternalLink, Bold, Italic, List, GripVertical, QrCode,
+  Briefcase, Undo2, Redo2, Upload, Type, Sliders, ShieldCheck, Layers,
+  FileDown, BookOpen, Target, Check
 } from "lucide-react";
 
-// ─── Typewriter Hook ──────────────────────────────────────────────────────────
-const useTypewriter = (fullText: string, speed = 100, resetDelay = 2000) => {
-  const [typedText, setTypedText] = useState("");
-  const [charIndex, setCharIndex] = useState(0);
-  const [isTyping, setIsTyping] = useState(true);
-  useEffect(() => {
-    if (!isTyping) { const t = setTimeout(() => { setCharIndex(0); setTypedText(""); setIsTyping(true); }, resetDelay); return () => clearTimeout(t); }
-    if (charIndex < fullText.length) { const t = setTimeout(() => { setTypedText(fullText.slice(0, charIndex + 1)); setCharIndex(charIndex + 1); }, speed); return () => clearTimeout(t); }
-    else { setIsTyping(false); }
-  }, [charIndex, isTyping, fullText, speed, resetDelay]);
-  return typedText;
-};
-
-// ─── Word Count Badge ────────────────────────────────────────────────────────
-function WordCountBadge({ text, dark, target }: { text: string; dark: boolean; target?: number }) {
-  const words = text ? text.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
-  const chars = text ? text.length : 0;
-  const pct = target ? Math.min(100, Math.round((words / target) * 100)) : null;
-  const color = !target ? (dark ? "#64748b" : "#94a3b8") : pct! >= 100 ? "#22c55e" : pct! >= 60 ? "#f59e0b" : "#ef4444";
-  return (
-    <div className="flex items-center gap-2 mt-0.5 mb-1">
-      <span className="text-[9px] font-black uppercase tracking-wider" style={{ color }}>
-        {words}w · {chars}c
-      </span>
-      {target && (
-        <div className={`flex-1 max-w-[80px] h-1 rounded-full overflow-hidden ${dark ? 'bg-slate-700' : 'bg-slate-100'}`}>
-          <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
-        </div>
-      )}
-      {target && <span className="text-[8px] font-bold" style={{ color: dark ? '#475569' : '#94a3b8' }}>/{target}w</span>}
-    </div>
-  );
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface ResumeData {
+  name: string; role: string; email: string; phone: string;
+  linkedin: string; website: string; location: string;
+  summary: string; experience: string; education: string;
+  skills: string; certifications: string; achievements: string; languages: string;
+  hiringManager: string; companyName: string; jobTitle: string; date: string;
+  openingParagraph: string; bodyParagraph1: string; bodyParagraph2: string; closingParagraph: string;
 }
 
-// ─── Markdown Renderer ────────────────────────────────────────────────────────
+interface CustomSection { id: string; title: string; content: string; }
+interface SavedResume {
+  id: string; name: string; data: ResumeData; template: string;
+  themeColor: string; fontFamily: string; density: string; savedAt: string;
+}
+interface GrammarIssue {
+  fieldKey: keyof ResumeData; field: string; original: string;
+  suggestion: string; replacement?: string; type: "spelling" | "grammar" | "style"; message: string;
+}
+
+// ─── Constants & Role Examples ────────────────────────────────────────────────
+const COLORS = ["#0f172a", "#1e40af", "#0f766e", "#065f46", "#991b1b", "#6b21a8", "#c2410c", "#334155"];
+
+const FONT_OPTIONS = [
+  { id: "sans", label: "Modern Sans", stack: "Inter, ui-sans-serif, system-ui, sans-serif", sample: "Clean & ATS-Ready" },
+  { id: "serif", label: "Classic Serif", stack: "Georgia, Cambria, 'Times New Roman', serif", sample: "Executive & Editorial" },
+  { id: "humanist", label: "Humanist", stack: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", sample: "Warm & Readable" },
+  { id: "mono", label: "Technical", stack: "ui-monospace, SFMono-Regular, Menlo, monospace", sample: "Structured & Dev" },
+];
+
+const DENSITY_OPTIONS = [
+  { id: "compact", label: "Compact", pad: "p-10", gap: "space-y-5", text: "text-[10.5px]" },
+  { id: "balanced", label: "Balanced", pad: "p-14", gap: "space-y-7", text: "text-[11px]" },
+  { id: "spacious", label: "Spacious", pad: "p-16", gap: "space-y-9", text: "text-[11.5px]" },
+];
+
+const RESUME_TEMPLATES = [
+  { id: "richard", name: "Executive Sidebar", category: "corporate", desc: "Bold left sidebar with crisp hierarchy" },
+  { id: "minimal", name: "ATS Minimal", category: "tech", desc: "Single-column scannable structure for recruiters" },
+  { id: "corporate", name: "Classic Corporate", category: "corporate", desc: "Centered formal header for traditional industries" },
+  { id: "split", name: "Modern Split", category: "modern", desc: "Full-width accent header with balanced columns" },
+  { id: "brandon", name: "Card Modern", category: "modern", desc: "Contemporary framed sidebar and rounded layout" },
+  { id: "creative", name: "Creative Banner", category: "creative", desc: "Visual banner with icon-led sections" },
+  { id: "lauren", name: "Editorial Serif", category: "creative", desc: "Refined typography for leadership and consulting" },
+  { id: "grid", name: "Two-Column Grid", category: "tech", desc: "Structured grid maximizing single-page density" },
+];
+
+const CL_TEMPLATES = [
+  { id: "cl-modern", label: "Modern" },
+  { id: "cl-executive", label: "Executive" },
+  { id: "cl-minimal", label: "Minimal" },
+  { id: "cl-corporate", label: "Corporate" },
+  { id: "cl-bold", label: "Bold" },
+  { id: "cl-elegant", label: "Elegant" },
+  { id: "cl-creative", label: "Creative" },
+  { id: "cl-timeline", label: "Timeline" },
+];
+
+const DEFAULT_LABELS: Record<string, string> = {
+  summary: "Professional Summary",
+  experience: "Work Experience",
+  achievements: "Key Achievements",
+  education: "Education",
+  certifications: "Certifications",
+  skills: "Core Skills",
+};
+
+const LABEL_PRESETS = [
+  { name: "Standard", labels: DEFAULT_LABELS },
+  { name: "Tech", labels: { summary: "Profile", experience: "Engineering Experience", achievements: "Selected Impact", education: "Education", certifications: "Certifications", skills: "Technical Stack" } },
+  { name: "Executive", labels: { summary: "Executive Profile", experience: "Leadership Experience", achievements: "Key Impact", education: "Education", certifications: "Board & Credentials", skills: "Core Competencies" } },
+  { name: "Academic", labels: { summary: "Research Profile", experience: "Academic Appointments", achievements: "Publications & Honors", education: "Degrees", certifications: "Grants & Awards", skills: "Methodologies" } },
+  { name: "Creative", labels: { summary: "About", experience: "Selected Experience", achievements: "Highlights", education: "Education", certifications: "Recognition", skills: "Capabilities" } },
+];
+
+const SAMPLE_PHOTOS = {
+  marcus: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=400&auto=format&fit=crop",
+  sarah: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=400&auto=format&fit=crop",
+  analyst: "https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=400&auto=format&fit=crop",
+};
+
+const TODAY = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+const ROLE_EXAMPLES: Record<string, { label: string; photo: string; data: ResumeData }> = {
+  marketing: {
+    label: "Marketing Manager",
+    photo: SAMPLE_PHOTOS.sarah,
+    data: {
+      name: "Claire Niyonkuru", role: "Digital Marketing Manager", email: "claire.n@example.com",
+      phone: "+1 (555) 234-8910", linkedin: "linkedin.com/in/claireniyonkuru", website: "clairemarketing.io",
+      location: "Toronto, Canada",
+      summary: "Results-oriented Marketing Manager specializing in B2B demand generation, content strategy, and lifecycle analytics. Experienced in leading cross-functional brand launches and building repeatable acquisition channels.",
+      experience: "Northstar Commerce | Marketing Manager | 2023 – Present\n• Directed multi-channel paid and organic campaigns across search, LinkedIn, and email, lowering customer acquisition cost by 22%.\n• Rebuilt onboarding email sequences and CRM segmentation, lifting trial-to-paid conversion from 11% to 16%.\n• Managed a 4-person content and design pod, shipping 3 quarterly product launches on schedule.\n\nHarbor Media Group | Growth Marketing Specialist | 2020 – 2023\n• Grew organic search traffic from 18K to 64K monthly sessions through technical SEO audits and topic clusters.\n• Coordinated partner webinars and trade events generating 400+ qualified sales leads annually.",
+      education: "University of Waterloo | B.A. in Business & Communications | 2016 – 2020",
+      skills: "Demand Generation, SEO & SEM, HubSpot CRM, Google Analytics 4, Lifecycle Email, Copywriting, A/B Testing, Campaign Budgeting",
+      certifications: "Google Ads Search Certified, HubSpot Inbound Marketing",
+      achievements: "• Delivered highest-converting product launch quarter in company history with 140% of pipeline target.\n• Authored internal brand messaging playbook adopted across sales and customer success teams.",
+      languages: "English (Fluent), French (Professional)",
+      hiringManager: "Hiring Manager", companyName: "Horizon Digital", jobTitle: "Senior Marketing Manager", date: TODAY,
+      openingParagraph: "I am writing to apply for the Senior Marketing Manager role at Horizon Digital. Over the past five years, I have focused on turning clear customer positioning and disciplined analytics into predictable revenue growth.",
+      bodyParagraph1: "At Northstar Commerce, I led our shift from ad-hoc promotions to structured lifecycle and search campaigns—reducing acquisition costs by 22% while improving trial-to-paid conversion across core segments.",
+      bodyParagraph2: "Horizon Digital's focus on practical, customer-led software resonates strongly with how I build marketing teams. I would be excited to bring my experience in B2B acquisition, CRM attribution, and cross-functional launches to your team.",
+      closingParagraph: "Thank you for your time and consideration. I would welcome the chance to discuss how my background aligns with your growth goals for the coming year.",
+    },
+  },
+  engineer: {
+    label: "Software Engineer",
+    photo: SAMPLE_PHOTOS.marcus,
+    data: {
+      name: "Daniel Okafor", role: "Full-Stack Software Engineer", email: "daniel.okafor@example.com",
+      phone: "+44 7700 900412", linkedin: "linkedin.com/in/danielokafor", website: "github.com/dokafor",
+      location: "London, UK",
+      summary: "Full-Stack Software Engineer building fast, reliable web applications with TypeScript, React, Next.js, and PostgreSQL. Focused on clean architecture, automated testing, and measurable performance improvements.",
+      experience: "Veridian Labs | Full-Stack Engineer | 2023 – Present\n• Architected a modular Next.js billing portal serving 14,000+ monthly active accounts, reducing median page load time from 2.4s to 0.7s.\n• Designed REST and webhook pipelines in Node.js and PostgreSQL with idempotency keys, cutting failed invoice syncs by 90%.\n• Introduced Playwright end-to-end tests in GitHub Actions, lowering post-release regressions across bi-weekly deployments.\n\nCloudBridge Solutions | Frontend Developer | 2021 – 2023\n• Built a reusable React component library with WCAG AA accessibility standards used across 3 customer-facing apps.\n• Collaborated with product designers to streamline checkout flows, reducing form drop-off by 18%.",
+      education: "University of Manchester | B.Sc. in Computer Science | 2018 – 2021",
+      skills: "TypeScript, React, Next.js, Node.js, PostgreSQL, Tailwind CSS, REST APIs, GitHub Actions, Docker, Automated Testing",
+      certifications: "AWS Certified Cloud Practitioner, Meta Front-End Developer",
+      achievements: "• Cut production API p95 latency by 45% through query indexing and Redis caching.\n• Mentored 2 junior engineers through weekly code reviews and pair programming.",
+      languages: "English (Native)",
+      hiringManager: "Engineering Hiring Team", companyName: "Atlas Systems", jobTitle: "Full-Stack Software Engineer", date: TODAY,
+      openingParagraph: "I am excited to apply for the Full-Stack Software Engineer position at Atlas Systems. I specialize in building maintainable TypeScript and Next.js applications that balance clean engineering with great user experience.",
+      bodyParagraph1: "In my current role at Veridian Labs, I led the rebuild of our customer billing dashboard and hardened our webhook infrastructure—improving load speed by more than 3x while cutting synchronization failures by 90%.",
+      bodyParagraph2: "I admire Atlas Systems' commitment to developer tooling and reliable infrastructure. I enjoy owning features end to end, from database schema design through accessible UI and CI testing.",
+      closingParagraph: "Thank you for reviewing my application. I look forward to the opportunity to discuss how I can contribute to your engineering team.",
+    },
+  },
+  analyst: {
+    label: "Data Analyst",
+    photo: SAMPLE_PHOTOS.analyst,
+    data: {
+      name: "Samuel Mugisha", role: "Data & Market Intelligence Analyst", email: "samuel.m@example.com",
+      phone: "+250 788 000 123", linkedin: "linkedin.com/in/samuelmugisha", website: "samueldata.dev",
+      location: "Kigali, Rwanda",
+      summary: "Detail-driven Data Analyst with strong experience in KPI dashboarding, database quality assurance, and market intelligence reporting. Skilled at turning fragmented operational datasets into clear executive decisions.",
+      experience: "CleanGrid Africa | Data Analyst | 2024 – Present\n• Built automated KPI dashboards in Excel and Google Sheets tracking regional project pipelines across 12 markets.\n• Designed a multi-step contact and source verification workflow, eliminating 30%+ duplicate records from member databases.\n• Produced monthly industry intelligence briefs used by leadership and event partners for stakeholder outreach.\n\nHorizon Events & Operations | Technical Operations Coordinator | 2022 – 2024\n• Coordinated technical checklists, equipment inventories, and vendor schedules for large-scale conferences.\n• Standardized post-event reporting templates, cutting monthly reconciliation turnaround time in half.",
+      education: "Kigali Independent University | Advanced Diploma in Electrical Technology | 2021 – 2025",
+      skills: "Data Analysis, Excel & Google Sheets, KPI Dashboards, SQL, Python, Market Intelligence, CRM Hygiene, Process Automation, Reporting",
+      certifications: "Microsoft Azure Fundamentals, Sustainable Solar Refrigeration Training",
+      achievements: "• Audited 175+ GB of organizational cloud storage and streamlined archival workflows, reclaiming over 50 GB.\n• Automated web form lead routing into CRM audiences, eliminating manual weekly imports.",
+      languages: "English (Fluent), Kinyarwanda (Native), French (Intermediate)",
+      hiringManager: "Hiring Manager", companyName: "Meridian Insights", jobTitle: "Data Analyst", date: TODAY,
+      openingParagraph: "I am writing to express my interest in the Data Analyst role at Meridian Insights. My work sits at the intersection of clean data operations, market intelligence, and practical workflow automation.",
+      bodyParagraph1: "At CleanGrid Africa, I manage cross-departmental KPI dashboards and source-verified project databases—ensuring leadership works from accurate, deduplicated intelligence rather than stale spreadsheets.",
+      bodyParagraph2: "I am drawn to Meridian Insights' reputation for rigorous field research and actionable analytics. I would love to bring my background in database governance, automated reporting, and stakeholder communication to your team.",
+      closingParagraph: "Thank you for considering my application. I would appreciate the opportunity to discuss how my analytical skills can support your upcoming projects.",
+    },
+  },
+  graduate: {
+    label: "Recent Graduate",
+    photo: SAMPLE_PHOTOS.marcus,
+    data: {
+      name: "Elena Morales", role: "Junior Operations & Business Analyst", email: "elena.morales@example.com",
+      phone: "+1 (555) 890-3344", linkedin: "linkedin.com/in/elenamorales", website: "elenamorales.me",
+      location: "Austin, TX",
+      summary: "Analytical Business Administration graduate with hands-on internship experience in operations reporting, vendor coordination, and process documentation. Eager to contribute structured problem-solving to a fast-moving operations team.",
+      experience: "CivicTech Partners | Operations Intern | Summer 2025\n• Audited weekly vendor fulfillment spreadsheets and identified recurring bottlenecks, improving on-time order tracking.\n• Built an interactive onboarding checklist in Notion and Google Sheets used by 15 incoming seasonal staff.\n\nCampus Entrepreneurship Hub | Program Assistant | 2023 – 2025\n• Coordinated logistics, registration lists, and feedback surveys for 12 student pitch workshops (80+ attendees each).\n• Summarized post-event survey metrics to guide speaker selection for the following semester.",
+      education: "University of Texas at Austin | B.B.A. in Operations & Analytics | 2022 – 2026",
+      skills: "Excel Pivot Tables, Google Sheets, Process Documentation, SQL Basics, Project Coordination, Stakeholder Communication, Presentation Design",
+      certifications: "Google Project Management Certificate",
+      achievements: "• Placed Top 3 in Annual Supply Chain Case Competition out of 28 university teams.\n• Dean's List Honoree across 5 consecutive semesters.",
+      languages: "English (Native), Spanish (Fluent)",
+      hiringManager: "Campus Recruiting Team", companyName: "Summit Logistics", jobTitle: "Junior Operations Analyst", date: TODAY,
+      openingParagraph: "I am eager to apply for the Junior Operations Analyst role at Summit Logistics. As a recent Business Administration graduate with hands-on internship experience in workflow auditing and reporting, I thrive on bringing order to complex processes.",
+      bodyParagraph1: "During my internship at CivicTech Partners, I reorganized fulfillment tracking sheets and created a standardized onboarding guide that helped new team members ramp up smoothly.",
+      bodyParagraph2: "Summit Logistics' investment in early-career analytical talent makes it an ideal place for me to grow while adding immediate value through clean reporting and reliable execution.",
+      closingParagraph: "Thank you for your consideration. I would welcome the opportunity to speak with your team about how I can contribute.",
+    },
+  },
+};
+
+const BULLET_BANK: Record<string, string[]> = {
+  Leadership: [
+    "Led a cross-functional team of [X] contributors to deliver [project] ahead of schedule and under budget.",
+    "Mentored [X] junior colleagues through structured feedback, onboarding playbooks, and weekly reviews.",
+    "Aligned product, operations, and leadership stakeholders around clear quarterly OKRs and delivery milestones.",
+  ],
+  Impact: [
+    "Streamlined [process/workflow], reducing weekly turnaround time by [X]% and eliminating manual handoffs.",
+    "Identified and resolved root-cause bottlenecks in [system], improving reliability and customer satisfaction.",
+    "Analyzed operational performance data to uncover cost-saving opportunities worth [$X / X%].",
+  ],
+  Technical: [
+    "Designed and deployed scalable features using [technologies], improving page speed and maintainability.",
+    "Automated repetitive reporting and data-validation tasks, ensuring consistent accuracy across [X] records.",
+    "Documented architecture decisions, API integrations, and troubleshooting runbooks for long-term team use.",
+  ],
+  Growth: [
+    "Planned and executed multi-channel campaigns that expanded qualified leads by [X]% over [timeframe].",
+    "Strengthened client retention by proactively tracking account health and resolving onboarding friction.",
+    "Produced executive dashboards and market briefs that guided strategic expansion into [region/segment].",
+  ],
+};
+
+const STOP_WORDS = new Set([
+  "about","above","after","again","against","all","also","and","any","are","because","been","before","being",
+  "below","between","both","but","can","could","did","does","doing","down","during","each","few","for","from",
+  "further","had","has","have","having","her","here","hers","herself","him","himself","his","how","into","its",
+  "itself","just","more","most","must","myself","need","nor","not","now","off","once","only","other","our",
+  "ours","ourselves","out","over","own","per","same","she","should","some","such","than","that","the","their",
+  "theirs","them","themselves","then","there","these","they","this","those","through","too","under","until",
+  "very","was","were","what","when","where","which","while","who","whom","why","will","with","work","working",
+  "would","you","your","yours","yourself","role","team","company","position","experience","years","ability",
+  "strong","skills","including","looking","join","help","make","within","across","using","ideal","candidate",
+  "responsibilities","requirements","qualifications","preferred","required","plus","apply","equal","opportunity"
+]);
+
+const FAQ_ITEMS = [
+  {
+    q: "Are these resume templates ATS-friendly?",
+    a: "Yes. Every template uses clean semantic typography, standard section headings, and real selectable text (not flattened images). If you are applying through strict legacy portals, you can also export an ATS-ready Plain Text (.txt) version alongside your PDF.",
+  },
+  {
+    q: "Should I download my resume as a PDF or a TXT file?",
+    a: "Keep both handy. Send the professionally formatted PDF to hiring managers and modern job boards so your layout looks identical on every screen, and use the Plain Text (.txt) download when pasting directly into older online application forms.",
+  },
+  {
+    q: "Should I include a profile photo on my resume?",
+    a: "It depends on your region and industry. Photos are common across parts of Europe, Africa, and creative roles, while employers in the US, UK, and Canada often prefer photo-free resumes. You can toggle your photo on or off with a single click in the Profile tab.",
+  },
+  {
+    q: "Where is my resume data saved?",
+    a: "Your drafts are saved locally in your own browser storage (auto-saving every 5 seconds, plus named versions you create). You can also export a portable .json backup file anytime to move your resume to another computer.",
+  },
+  {
+    q: "Can I create a matching cover letter?",
+    a: "Yes. Switch to the Cover Letter studio anytime—your contact info, name, and role sync automatically, and you can generate a structured draft tailored to your target company and job title.",
+  },
+];
+
+// ─── Helper Utilities ─────────────────────────────────────────────────────────
 function renderText(text: string): React.ReactNode {
   if (!text) return null;
-  const lines = text.split('\n');
   return (
     <>
-      {lines.map((line, li) => {
+      {text.split("\n").map((line, li) => {
         const parseInline = (str: string): React.ReactNode[] => {
           const nodes: React.ReactNode[] = [];
           const re = /(\*\*(.+?)\*\*|_(.+?)_)/g;
           let last = 0, m: RegExpExecArray | null;
           while ((m = re.exec(str)) !== null) {
             if (m.index > last) nodes.push(str.slice(last, m.index));
-            if (m[0].startsWith('**')) nodes.push(<strong key={`b${m.index}`}>{m[2]}</strong>);
+            if (m[0].startsWith("**")) nodes.push(<strong key={`b${m.index}`}>{m[2]}</strong>);
             else nodes.push(<em key={`i${m.index}`}>{m[3]}</em>);
             last = m.index + m[0].length;
           }
           if (last < str.length) nodes.push(str.slice(last));
           return nodes;
         };
-        const isBullet = line.startsWith('• ') || line.startsWith('- ');
-        const content = isBullet ? line.slice(2) : line;
+        const trimmed = line.trim();
+        const isBullet = trimmed.startsWith("• ") || trimmed.startsWith("- ");
+        const content = isBullet ? trimmed.slice(2) : line;
         const parsed = parseInline(content);
         if (isBullet) {
           return (
-            <div key={li} className="flex gap-1.5 items-start">
-              <span className="shrink-0 mt-[0.1em]">•</span>
+            <div key={li} className="flex gap-1.5 items-start mt-0.5">
+              <span className="shrink-0 mt-[0.05em]">•</span>
               <span>{parsed}</span>
             </div>
           );
         }
-        return <span key={li} className="block">{parsed || <>&nbsp;</>}</span>;
+        return <span key={li} className="block">{parsed.length ? parsed : <>&nbsp;</>}</span>;
       })}
     </>
   );
 }
 
-// ─── Rich Textarea ────────────────────────────────────────────────────────────
-function RichTextarea({ label, fieldKey, value, onChange, rows, dark, wordTarget }: {
-  label: string; fieldKey: string; value: string; onChange: (k: string, v: string) => void;
-  rows: number; dark: boolean; wordTarget?: number;
-}) {
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const selRef = useRef<{start:number;end:number}>({start:0, end:0});
+function buildPlainTextResume(data: ResumeData, labels: Record<string, string>, customSections: CustomSection[]) {
+  const stripMd = (s: string) => (s || "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/_(.+?)_/g, "$1");
+  const lines = [
+    data.name.toUpperCase(),
+    data.role,
+    [data.email, data.phone, data.location, data.linkedin, data.website].filter(Boolean).join(" | "),
+    "",
+    labels.summary.toUpperCase(),
+    "----------------------------------------",
+    stripMd(data.summary),
+    "",
+    labels.experience.toUpperCase(),
+    "----------------------------------------",
+    stripMd(data.experience),
+    "",
+    labels.achievements.toUpperCase(),
+    "----------------------------------------",
+    stripMd(data.achievements),
+    "",
+    labels.skills.toUpperCase(),
+    "----------------------------------------",
+    data.skills,
+    "",
+    labels.education.toUpperCase(),
+    "----------------------------------------",
+    stripMd(data.education),
+  ];
+  if (data.certifications?.trim()) {
+    lines.push("", labels.certifications.toUpperCase(), "----------------------------------------", stripMd(data.certifications));
+  }
+  if (data.languages?.trim()) {
+    lines.push("", "LANGUAGES", "----------------------------------------", data.languages);
+  }
+  customSections.filter(s => s.title || s.content).forEach(sec => {
+    lines.push("", (sec.title || "ADDITIONAL").toUpperCase(), "----------------------------------------", stripMd(sec.content));
+  });
+  return lines.join("\n").trim() + "\n";
+}
 
-  const saveSelection = () => {
-    const ta = taRef.current;
-    if (ta) selRef.current = { start: ta.selectionStart, end: ta.selectionEnd };
+function triggerTextDownload(filename: string, content: string, mime = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Dynamic ATS Keyword Analyzer (Extracts Real JD Keywords) ────────────────
+function analyzeATS(data: ResumeData, jobDesc: string) {
+  const resumeText = `${data.role} ${data.summary} ${data.experience} ${data.skills} ${data.education} ${data.certifications} ${data.achievements}`.toLowerCase();
+  const tokens = (jobDesc || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9+#.\s-]/g, " ")
+    .split(/\s+/)
+    .filter(w => w.length >= 3 && !STOP_WORDS.has(w) && !/^\d+$/.test(w));
+
+  const freq = new Map<string, number>();
+  tokens.forEach(w => freq.set(w, (freq.get(w) || 0) + 1));
+
+  // Also detect common two-word phrases from JD
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const bigram = `${tokens[i]} ${tokens[i + 1]}`;
+    if (tokens[i] !== tokens[i + 1]) {
+      freq.set(bigram, (freq.get(bigram) || 0) + 1);
+    }
+  }
+
+  const ranked = Array.from(freq.entries())
+    .filter(([term, count]) => term.includes(" ") ? count >= 2 : count >= 1)
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .map(([term]) => term);
+
+  const uniqueKeywords = Array.from(new Set(ranked)).slice(0, 18);
+  const matched = uniqueKeywords.filter(kw => resumeText.includes(kw));
+  const missing = uniqueKeywords.filter(kw => !resumeText.includes(kw));
+  const keywordPct = uniqueKeywords.length ? Math.round((matched.length / uniqueKeywords.length) * 100) : 0;
+
+  const tips: string[] = [];
+  if (missing.length > 0) tips.push(`Incorporate truthful missing terms like "${missing.slice(0, 3).join('", "')}" into your Skills or Experience.`);
+  if (!/\d+%|\$\d+|\d+x|\d+\+/i.test(data.experience + data.achievements)) tips.push("Add measurable outcomes (percentages, time saved, team size, or volume handled).");
+  if (!data.experience.includes("•") && !data.experience.includes("- ")) tips.push("Format job duties as concise bullet points so ATS parsers and recruiters scan them cleanly.");
+  if (tips.length === 0) tips.push("Strong keyword alignment and structured formatting. Do a quick final proofread before exporting.");
+
+  return { score: keywordPct, matched, missing, totalAnalyzed: uniqueKeywords.length, tips };
+}
+
+// ─── Structural Completeness Checklist ───────────────────────────────────────
+function calcChecklist(data: ResumeData) {
+  const checks = [
+    { label: "Full name & target role", pass: data.name.trim().length > 2 && data.role.trim().length > 2 },
+    { label: "Email & phone number", pass: /\S+@\S+\.\S+/.test(data.email) && data.phone.trim().length > 5 },
+    { label: "Location & LinkedIn/Portfolio", pass: data.location.trim().length > 2 && (data.linkedin.trim().length > 4 || data.website.trim().length > 4) },
+    { label: "Concise summary (25–80 words)", pass: (() => { const w = data.summary.trim().split(/\s+/).filter(Boolean).length; return w >= 20 && w <= 95; })() },
+    { label: "Experience uses bullet points", pass: data.experience.includes("•") || data.experience.includes("- ") },
+    { label: "Quantified results included", pass: /\d+%|\$\d+|\d+x|\d+\+/i.test(data.experience + " " + data.achievements) },
+    { label: "Strong action verbs used", pass: /\b(led|built|designed|architected|directed|grew|automated|launched|managed|delivered|improved|developed|streamlined|coordinated|analyzed)\b/i.test(data.experience) },
+    { label: "Education & skills filled", pass: data.education.trim().length > 8 && data.skills.split(",").filter(s => s.trim()).length >= 4 },
+  ];
+  const passed = checks.filter(c => c.pass).length;
+  return { passed, total: checks.length, pct: Math.round((passed / checks.length) * 100), checks };
+}
+
+// ─── Grammar & Style Checker ─────────────────────────────────────────────────
+function checkGrammar(data: ResumeData): GrammarIssue[] {
+  const issues: GrammarIssue[] = [];
+  const typos: Record<string, string> = {
+    recieve: "receive", occured: "occurred", seperate: "separate", definately: "definitely",
+    accomodate: "accommodate", achive: "achieve", acheive: "achieve", experiance: "experience",
+    experince: "experience", managment: "management", professionaly: "professionally",
+    recomend: "recommend", succesfull: "successful", successfull: "successful", tecnical: "technical",
+    developement: "development", colaborated: "collaborated", responsibilites: "responsibilities",
   };
+  const weakPhrases = [
+    { pattern: /\bresponsible for\b/gi, replacement: "Led", suggestion: "Led / Managed / Directed", message: "Passive phrase — lead with an ownership verb" },
+    { pattern: /\bworked on\b/gi, replacement: "Built", suggestion: "Built / Delivered / Developed", message: "Vague phrasing — specify what you built or delivered" },
+    { pattern: /\bhelped with\b/gi, replacement: "Supported", suggestion: "Accelerated / Contributed to", message: "Soft phrasing — clarify your exact contribution" },
+    { pattern: /\bteam player\b/gi, replacement: "cross-functional collaborator", suggestion: "Show collaboration through project outcomes", message: "Overused cliché — demonstrate teamwork with results" },
+    { pattern: /\bhardworking\b/gi, replacement: "results-driven", suggestion: "Replace with measurable achievements", message: "Generic filler adjective" },
+  ];
 
-  const insertFormat = (type: "bold" | "italic" | "bullet") => {
-    const { start, end } = selRef.current;
-    const sel = value.slice(start, end);
-    let next = value, ns = start, ne = end;
+  const fields: { key: keyof ResumeData; label: string }[] = [
+    { key: "summary", label: "Summary" },
+    { key: "experience", label: "Experience" },
+    { key: "achievements", label: "Achievements" },
+    { key: "education", label: "Education" },
+  ];
 
-    if (type === "bold") {
-      if (sel) {
-        if (sel.startsWith("**") && sel.endsWith("**") && sel.length > 4) {
-          const inner = sel.slice(2,-2); next = value.slice(0,start)+inner+value.slice(end); ne = start+inner.length;
-        } else { next = value.slice(0,start)+`**${sel}**`+value.slice(end); ne = end+4; }
-      } else { next = value.slice(0,start)+"**bold**"+value.slice(end); ns=start+2; ne=start+6; }
-    } else if (type === "italic") {
-      if (sel) {
-        if (sel.startsWith("_") && sel.endsWith("_") && sel.length > 2) {
-          const inner = sel.slice(1,-1); next = value.slice(0,start)+inner+value.slice(end); ne = start+inner.length;
-        } else { next = value.slice(0,start)+`_${sel}_`+value.slice(end); ne = end+2; }
-      } else { next = value.slice(0,start)+"_italic_"+value.slice(end); ns=start+1; ne=start+7; }
-    } else if (type === "bullet") {
-      if (sel) {
-        const lines = sel.split('\n').map(l=>l.startsWith('• ')?l.slice(2):`• ${l}`).join('\n');
-        next = value.slice(0,start)+lines+value.slice(end); ne = start+lines.length;
-      } else {
-        const ls = value.lastIndexOf('\n', start-1)+1;
-        if (value.slice(ls).startsWith('• ')) {
-          next = value.slice(0,ls)+value.slice(ls+2); ns=Math.max(ls,start-2); ne=ns;
-        } else { next = value.slice(0,ls)+'• '+value.slice(ls); ns=start+2; ne=ns; }
+  for (const { key, label } of fields) {
+    const text = data[key] || "";
+    if (!text) continue;
+    for (const raw of text.split(/\b/)) {
+      const clean = raw.toLowerCase().replace(/[^a-z]/g, "");
+      if (typos[clean]) {
+        issues.push({
+          fieldKey: key, field: label, original: raw, suggestion: typos[clean],
+          replacement: typos[clean], type: "spelling", message: `Possible spelling error: "${raw}"`,
+        });
       }
     }
+    for (const rule of weakPhrases) {
+      const match = text.match(rule.pattern);
+      if (match) {
+        issues.push({
+          fieldKey: key, field: label, original: match[0], suggestion: rule.suggestion,
+          replacement: rule.replacement, type: "style", message: rule.message,
+        });
+      }
+      rule.pattern.lastIndex = 0;
+    }
+    if (key === "experience" && text.length > 40 && !text.includes("•") && !text.includes("- ")) {
+      issues.push({
+        fieldKey: key, field: label, original: "(paragraph format)",
+        suggestion: "Use • bullet points for each achievement", type: "grammar",
+        message: "Bullet points make work history much faster for recruiters to scan",
+      });
+    }
+  }
+  return issues.slice(0, 12);
+}
 
-    onChange(fieldKey, next);
-    selRef.current = {start:ns, end:ne};
-    requestAnimationFrame(() => {
-      const ta = taRef.current;
-      if (ta) { ta.focus(); ta.setSelectionRange(ns, ne); }
+// ─── Hybrid AI Assistant (Calls /api/gemini if available, smart fallback otherwise)
+async function generateAIContent(data: ResumeData): Promise<{ summary: string; experience: string; achievements: string; source: "gemini" | "smart" }> {
+  try {
+    const res = await fetch("/api/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: `You are a certified professional resume writer. Improve this resume content cleanly and truthfully without inventing fake employers or impossible metrics. Return ONLY valid JSON with keys "summary", "experience", "achievements".\nRole: ${data.role}\nSkills: ${data.skills}\nCurrent Summary: ${data.summary}\nCurrent Experience: ${data.experience}\nCurrent Achievements: ${data.achievements}`,
+      }),
     });
+    if (res.ok) {
+      const json = await res.json();
+      const rawText = json.text || json.result || "";
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (match) {
+        const parsed = JSON.parse(match[0]);
+        if (parsed.summary && parsed.experience) {
+          return {
+            summary: parsed.summary,
+            experience: parsed.experience,
+            achievements: parsed.achievements || data.achievements,
+            source: "gemini",
+          };
+        }
+      }
+    }
+  } catch {
+    // Graceful fallback when /api/gemini is not configured
+  }
+
+  await new Promise(r => setTimeout(r, 650));
+  const role = data.role.trim() || "Professional";
+  const topSkills = data.skills.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3);
+  const skillText = topSkills.length ? topSkills.join(", ") : "project execution, cross-functional collaboration, and process improvement";
+
+  return {
+    source: "smart",
+    summary: `Focused ${role} bringing hands-on expertise in ${skillText}. Proven ability to translate complex priorities into structured workflows, clear reporting, and dependable outcomes across cross-functional teams.`,
+    experience: data.experience.trim()
+      ? data.experience
+          .replace(/\bresponsible for\b/gi, "Directed")
+          .replace(/\bworked on\b/gi, "Delivered")
+          .replace(/\bhelped with\b/gi, "Supported")
+      : `Current Organization | ${role} | 2023 – Present\n• Led core ${topSkills[0] || "operational"} initiatives from planning to execution, improving workflow consistency and turnaround speed.\n• Partnered across teams to standardize documentation, reporting templates, and quality checks.\n• Delivered measurable improvements in reliability and stakeholder satisfaction across key projects.`,
+    achievements: data.achievements.trim()
+      ? data.achievements
+      : `• Recognized for streamlining recurring ${topSkills[0] || "team"} processes and maintaining high accuracy under tight deadlines.\n• Built reusable templates and documentation that shortened onboarding time for new colleagues.`,
   };
-
-  const btn = `p-1.5 rounded transition-colors flex items-center justify-center ${dark?'text-slate-400 hover:text-slate-100 hover:bg-slate-600':'text-slate-400 hover:text-slate-800 hover:bg-slate-200'}`;
-
-  return (
-    <div>
-      <div className={`text-[9px] font-black uppercase ${dark?'text-slate-400':'text-slate-500'} mt-1 mb-0.5`}>{label}</div>
-      <div className={`rounded-lg border overflow-hidden ${dark?'border-slate-700':'border-slate-200'}`}>
-        <div className={`flex items-center gap-0.5 px-2 py-1 border-b ${dark?'bg-slate-700 border-slate-600':'bg-slate-50 border-slate-200'}`}>
-          <button type="button" className={btn} title="Bold" onMouseDown={e=>{e.preventDefault();insertFormat("bold");}}><Bold size={11}/></button>
-          <button type="button" className={btn} title="Italic" onMouseDown={e=>{e.preventDefault();insertFormat("italic");}}><Italic size={11}/></button>
-          <div className={`w-px h-3.5 mx-1 ${dark?'bg-slate-600':'bg-slate-300'}`}/>
-          <button type="button" className={btn} title="Bullet" onMouseDown={e=>{e.preventDefault();insertFormat("bullet");}}><List size={11}/></button>
-          <span className={`ml-auto text-[8px] font-bold uppercase tracking-wider ${dark?'text-slate-500':'text-slate-400'}`}>Format</span>
-        </div>
-        <textarea
-          ref={taRef}
-          className={`w-full p-2.5 text-sm resize-none focus:outline-none ${dark?'bg-slate-800 text-slate-100':'bg-white text-slate-900'}`}
-          rows={rows}
-          value={value}
-          onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>onChange(fieldKey,e.target.value)}
-          onSelect={saveSelection}
-          onKeyUp={saveSelection}
-          onMouseUp={saveSelection}
-          onFocus={saveSelection}
-        />
-      </div>
-      <WordCountBadge text={value} dark={dark} target={wordTarget}/>
-    </div>
-  );
 }
 
-// ─── Custom Section Builder ──────────────────────────────────────────────────
-interface CustomSection {
-  id: string;
-  title: string;
-  content: string;
-  icon: string;
-}
-
-function CustomSectionBuilder({ sections, onAdd, onRemove, onUpdate, onReorder, dark }: {
-  sections: CustomSection[];
-  onAdd: () => void;
-  onRemove: (id: string) => void;
-  onUpdate: (id: string, field: "title" | "content", val: string) => void;
-  onReorder: (from: number, to: number) => void;
-  dark: boolean;
-}) {
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [overIdx, setOverIdx] = useState<number | null>(null);
-
-  const inputCls = dark ? 'bg-slate-700 border-slate-600 text-slate-100 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-800 placeholder:text-slate-400';
-  const cardCls = dark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200';
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className={`text-[9px] font-black uppercase tracking-widest ${dark ? 'text-slate-400' : 'text-slate-500'} flex items-center gap-1`}>
-          <Plus size={10} /> Custom Sections
-        </span>
-        <button onClick={onAdd}
-          className="text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-400 flex items-center gap-1 bg-blue-600/10 px-2 py-1 rounded-lg transition-colors">
-          <Plus size={10} /> Add
-        </button>
-      </div>
-      {sections.length === 0 && (
-        <div className={`text-[10px] text-center py-3 rounded-xl border-2 border-dashed ${dark ? 'border-slate-700 text-slate-500' : 'border-slate-200 text-slate-400'}`}>
-          Add sections: Volunteering, Projects, Languages...
-        </div>
-      )}
-      {sections.map((sec, idx) => (
-        <div
-          key={sec.id}
-          draggable
-          onDragStart={() => setDragIdx(idx)}
-          onDragOver={(e) => { e.preventDefault(); setOverIdx(idx); }}
-          onDrop={() => { if (dragIdx !== null && dragIdx !== idx) onReorder(dragIdx, idx); setDragIdx(null); setOverIdx(null); }}
-          onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-          className={`border rounded-xl p-3 space-y-2 transition-all cursor-grab active:cursor-grabbing ${cardCls} ${overIdx === idx ? 'ring-2 ring-blue-500' : ''} ${dragIdx === idx ? 'opacity-50 scale-[0.98]' : ''}`}
-        >
-          <div className="flex items-center gap-2">
-            <GripVertical size={12} className={dark ? 'text-slate-600' : 'text-slate-300'} />
-            <input placeholder="Section Title" value={sec.title} onChange={e => onUpdate(sec.id, "title", e.target.value)}
-              className={`flex-1 p-1.5 text-[11px] font-bold rounded-lg border ${inputCls}`}/>
-            <button onClick={() => onRemove(sec.id)} className="text-slate-400 hover:text-red-400 transition-colors"><Trash2 size={12}/></button>
-          </div>
-          <textarea placeholder="Content..." value={sec.content} onChange={e => onUpdate(sec.id, "content", e.target.value)}
-            rows={3} className={`w-full p-2 text-[11px] rounded-lg border resize-none focus:outline-none ${inputCls}`}/>
-          <WordCountBadge text={sec.content} dark={dark} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Real QR Code Generator ───────────────────────────────────────────────────
+// ─── Real QR Code Generator (Version 1-7, Level L) ────────────────────────────
 const _GFexp = new Uint8Array(512), _GFlog = new Uint8Array(256);
 (() => {
   let x = 1;
-  for (let i = 0; i < 255; i++) {
-    _GFexp[i] = x; _GFlog[x] = i;
-    x <<= 1; if (x & 256) x ^= 0x11d;
-  }
+  for (let i = 0; i < 255; i++) { _GFexp[i] = x; _GFlog[x] = i; x <<= 1; if (x & 256) x ^= 0x11d; }
   for (let i = 255; i < 512; i++) _GFexp[i] = _GFexp[i - 255];
 })();
 const _gfMul = (a: number, b: number) => (!a || !b) ? 0 : _GFexp[(_GFlog[a] + _GFlog[b]) % 255];
@@ -243,7 +501,7 @@ const _genPoly = (n: number) => {
   let g = [1];
   for (let i = 0; i < n; i++) {
     const t = new Array(g.length + 1).fill(0);
-    for (let j = 0; j < g.length; j++) { t[j] ^= _gfMul(g[j], _GFexp[i]); t[j+1] ^= g[j]; }
+    for (let j = 0; j < g.length; j++) { t[j] ^= _gfMul(g[j], _GFexp[i]); t[j + 1] ^= g[j]; }
     g = t;
   }
   return g;
@@ -251,12 +509,13 @@ const _genPoly = (n: number) => {
 const _polyDiv = (msg: number[], gen: number[]) => {
   const r = [...msg];
   for (let i = 0; i < msg.length; i++) {
-    const c = r[i]; if (c) for (let j = 1; j < gen.length; j++) r[i+j] ^= _gfMul(gen[j], c);
+    const c = r[i]; if (c) for (let j = 1; j < gen.length; j++) r[i + j] ^= _gfMul(gen[j], c);
   }
   return r.slice(msg.length);
 };
-const _VT: [number,number,number,number][] = [
-  [0,0,0,0],[19,7,1,21],[34,10,1,25],[55,15,1,29],[80,20,1,33],[108,26,1,37],[68,18,2,41],[78,20,2,45]
+const _VT: [number, number, number, number][] = [
+  [0, 0, 0, 0], [19, 7, 1, 21], [34, 10, 1, 25], [55, 15, 1, 29],
+  [80, 20, 1, 33], [108, 26, 1, 37], [68, 18, 2, 41], [78, 20, 2, 45],
 ];
 const _FMT_L2 = 0b110110001000001;
 
@@ -264,1017 +523,466 @@ function _buildQRMatrix(text: string): number[][] | null {
   const bytes: number[] = [];
   for (let i = 0; i < text.length; i++) {
     const cp = text.charCodeAt(i);
-    if (cp < 128) { bytes.push(cp); }
-    else if (cp < 0x800) { bytes.push(0xC0|(cp>>6)); bytes.push(0x80|(cp&0x3F)); }
-    else { bytes.push(0xE0|(cp>>12)); bytes.push(0x80|((cp>>6)&0x3F)); bytes.push(0x80|(cp&0x3F)); }
+    if (cp < 128) bytes.push(cp);
+    else if (cp < 0x800) { bytes.push(0xC0 | (cp >> 6), 0x80 | (cp & 0x3F)); }
+    else { bytes.push(0xE0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F)); }
   }
   const v = _VT.findIndex(([dc]) => dc && bytes.length <= dc);
   if (v < 1) return null;
   const [dc, ec, blocks, sz] = _VT[v];
   const bits: number[] = [];
-  const push = (val: number, len: number) => { for (let i=len-1;i>=0;i--) bits.push((val>>i)&1); };
-  push(4,4); push(bytes.length,8);
-  for (const b of bytes) push(b,8);
-  push(0,4);
+  const push = (val: number, len: number) => { for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+  push(4, 4); push(bytes.length, 8);
+  for (const b of bytes) push(b, 8);
+  push(0, 4);
   while (bits.length % 8) bits.push(0);
   const cw: number[] = [];
-  for (let i = 0; i < bits.length; i+=8) { let b=0; for (let j=0;j<8;j++) b=(b<<1)|(bits[i+j]||0); cw.push(b); }
+  for (let i = 0; i < bits.length; i += 8) { let b = 0; for (let j = 0; j < 8; j++) b = (b << 1) | (bits[i + j] || 0); cw.push(b); }
   const pads = [0xEC, 0x11]; let pi = 0;
-  while (cw.length < dc) cw.push(pads[pi++%2]);
-  const bsz = Math.floor(dc/blocks); const allEC: number[] = [];
-  for (let b=0;b<blocks;b++) {
-    const bd = cw.slice(b*bsz,(b+1)*bsz);
-    allEC.push(..._polyDiv([...bd,...new Array(ec).fill(0)], _genPoly(ec)));
+  while (cw.length < dc) cw.push(pads[pi++ % 2]);
+  const bsz = Math.floor(dc / blocks); const allEC: number[] = [];
+  for (let b = 0; b < blocks; b++) {
+    const bd = cw.slice(b * bsz, (b + 1) * bsz);
+    allEC.push(..._polyDiv([...bd, ...new Array(ec).fill(0)], _genPoly(ec)));
   }
-  const final = [...cw, ...allEC];
   const allBits: number[] = [];
-  for (const c of final) for (let i=7;i>=0;i--) allBits.push((c>>i)&1);
-  const M: number[][] = Array.from({length:sz},()=>new Array(sz).fill(-1));
-  const set = (r:number,c:number,val:number) => { if(r>=0&&r<sz&&c>=0&&c<sz) M[r][c]=val; };
-  const finder = (tr:number,tc:number) => {
-    for (let r=0;r<7;r++) for (let c=0;c<7;c++)
-      set(tr+r,tc+c,(r===0||r===6||c===0||c===6||(r>=2&&r<=4&&c>=2&&c<=4))?1:0);
-    for (let i=-1;i<=7;i++) { set(tr-1,tc+i,0);set(tr+7,tc+i,0);set(tr+i,tc-1,0);set(tr+i,tc+7,0); }
+  for (const c of [...cw, ...allEC]) for (let i = 7; i >= 0; i--) allBits.push((c >> i) & 1);
+  const M: number[][] = Array.from({ length: sz }, () => new Array(sz).fill(-1));
+  const set = (r: number, c: number, val: number) => { if (r >= 0 && r < sz && c >= 0 && c < sz) M[r][c] = val; };
+  const finder = (tr: number, tc: number) => {
+    for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++)
+      set(tr + r, tc + c, (r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4)) ? 1 : 0);
+    for (let i = -1; i <= 7; i++) { set(tr - 1, tc + i, 0); set(tr + 7, tc + i, 0); set(tr + i, tc - 1, 0); set(tr + i, tc + 7, 0); }
   };
-  finder(0,0); finder(0,sz-7); finder(sz-7,0);
-  for (let i=8;i<sz-8;i++) { set(6,i,i%2===0?1:0); set(i,6,i%2===0?1:0); }
-  set(sz-8,8,1);
+  finder(0, 0); finder(0, sz - 7); finder(sz - 7, 0);
+  for (let i = 8; i < sz - 8; i++) { set(6, i, i % 2 === 0 ? 1 : 0); set(i, 6, i % 2 === 0 ? 1 : 0); }
+  set(sz - 8, 8, 1);
   const fmtArr: number[] = [];
-  for (let i=14;i>=0;i--) fmtArr.push((_FMT_L2>>i)&1);
-  const fp1:number[][] = [[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
-  const fp2:number[][] = [[sz-1,8],[sz-2,8],[sz-3,8],[sz-4,8],[sz-5,8],[sz-6,8],[sz-7,8],[8,sz-8],[8,sz-7],[8,sz-6],[8,sz-5],[8,sz-4],[8,sz-3],[8,sz-2],[8,sz-1]];
-  for (let i=0;i<15;i++) { set(fp1[i][0],fp1[i][1],fmtArr[i]); set(fp2[i][0],fp2[i][1],fmtArr[i]); }
-  const maskFn = (r:number,c:number) => ((r+c)%3===0)?1:0;
+  for (let i = 14; i >= 0; i--) fmtArr.push((_FMT_L2 >> i) & 1);
+  const fp1 = [[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
+  const fp2 = [[sz-1,8],[sz-2,8],[sz-3,8],[sz-4,8],[sz-5,8],[sz-6,8],[sz-7,8],[8,sz-8],[8,sz-7],[8,sz-6],[8,sz-5],[8,sz-4],[8,sz-3],[8,sz-2],[8,sz-1]];
+  for (let i = 0; i < 15; i++) { set(fp1[i][0], fp1[i][1], fmtArr[i]); set(fp2[i][0], fp2[i][1], fmtArr[i]); }
   let bi = 0;
   const cols: number[] = [];
-  for (let c=sz-1;c>=1;c-=2) { if(c===6) c--; cols.push(c); }
+  for (let c = sz - 1; c >= 1; c -= 2) { if (c === 6) c--; cols.push(c); }
   cols.forEach((rc, ci) => {
-    for (let row=0;row<sz;row++) {
-      const r = ci%2===0 ? sz-1-row : row;
-      for (const c of [rc, rc-1]) {
-        if (M[r][c]===-1) {
+    for (let row = 0; row < sz; row++) {
+      const r = ci % 2 === 0 ? sz - 1 - row : row;
+      for (const c of [rc, rc - 1]) {
+        if (M[r][c] === -1) {
           const bit = bi < allBits.length ? allBits[bi++] : 0;
-          M[r][c] = bit ^ maskFn(r,c);
+          M[r][c] = bit ^ (((r + c) % 3 === 0) ? 1 : 0);
         }
       }
     }
   });
-  for (let r=0;r<sz;r++) for (let c=0;c<sz;c++) if(M[r][c]===-1) M[r][c]=0;
+  for (let r = 0; r < sz; r++) for (let c = 0; c < sz; c++) if (M[r][c] === -1) M[r][c] = 0;
   return M;
 }
 
-function QRCodeSVG({ value, size = 80, color = "#000" }: { value: string; size?: number; color?: string }) {
+function QRCodeSVG({ value, size = 60, color = "#0f172a" }: { value: string; size?: number; color?: string }) {
   let url = value || "";
   if (url && !url.startsWith("http") && !url.startsWith("mailto:")) url = "https://" + url;
   const matrix = _buildQRMatrix(url || "https://linkedin.com");
-  if (!matrix) return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} xmlns="http://www.w3.org/2000/svg">
-      <rect width={size} height={size} fill="white"/>
-      <rect x={2} y={2} width={size-4} height={size-4} fill="none" stroke={color} strokeWidth={2}/>
-      <text x={size/2} y={size/2+3} textAnchor="middle" fontSize={8} fill={color}>QR</text>
-    </svg>
-  );
+  if (!matrix) return null;
   const modules = matrix.length;
-  const padding = size * 0.04;
-  const inner = size - padding * 2;
-  const cell = inner / modules;
+  const pad = size * 0.04;
+  const cell = (size - pad * 2) / modules;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} xmlns="http://www.w3.org/2000/svg">
-      <rect width={size} height={size} fill="white"/>
+      <rect width={size} height={size} fill="white" />
       {matrix.flatMap((row, r) =>
         row.map((val, c) =>
-          val === 1 ? (
-            <rect key={`${r}-${c}`} x={padding + c * cell} y={padding + r * cell} width={cell + 0.5} height={cell + 0.5} fill={color}/>
-          ) : null
+          val === 1 ? <rect key={`${r}-${c}`} x={pad + c * cell} y={pad + r * cell} width={cell + 0.4} height={cell + 0.4} fill={color} /> : null
         )
       )}
     </svg>
   );
 }
 
-// ─── Simulated AI helper ──────────────────────────────────────────────────────
-async function simulateAI(type: "writer" | "ats", data: any, jobDesc?: string): Promise<any> {
-  await new Promise(resolve => setTimeout(resolve, 1200 + Math.random() * 800));
-  if (type === "writer") {
-    const role = data.role || "Professional";
-    const skills = data.skills || "leadership, communication, problem-solving";
-    return {
-      summary: `Results-driven ${role} with proven expertise in ${skills.split(',')[0]?.trim() || 'strategic initiatives'}. Demonstrated ability to lead cross-functional teams and deliver measurable business impact through innovative solutions and data-driven decision making.`,
-      experience: `${data.name?.split(' ')[0] || 'Current'} Company | ${role} | 2021 - Present\n• Spearheaded strategic initiatives that increased operational efficiency by 35% and reduced costs by $200K annually\n• Led cross-functional team of 12 to successfully deliver 8 high-impact projects, achieving 98% on-time completion rate\n• Implemented data-driven processes that improved key performance metrics by 40% within first 6 months\n\nPrevious Company | ${role.includes('Senior') ? 'Mid-level' : 'Junior'} ${role.replace('Senior ', '').replace('Lead ', '')} | 2018 - 2021\n• Managed portfolio of 15+ client accounts with combined annual value of $2.5M, maintaining 95% retention rate\n• Developed and executed strategies that generated 25% year-over-year revenue growth`,
-      achievements: `• Recognized as Top Performer 2023 for exceeding quarterly targets by 45% and driving $1.2M in new revenue\n• Led digital transformation initiative that modernized legacy systems, reducing processing time by 60%\n• Awarded "Innovation Excellence" for developing proprietary framework adopted across 5 departments`
-    };
-  }
-  if (type === "ats") {
-    const jobWords = (jobDesc || "").toLowerCase().split(/\W+/).filter(w => w.length > 3);
-    const resumeText = `${data.summary} ${data.experience} ${data.skills} ${data.education}`.toLowerCase();
-    const commonKeywords = ["leadership", "management", "strategy", "analysis", "development", "communication", "project", "team", "results", "business", "process", "data", "technical", "planning", "optimization"];
-    const matched = commonKeywords.filter(kw => resumeText.includes(kw) && jobWords.includes(kw)).slice(0, 8);
-    const missing = commonKeywords.filter(kw => jobWords.includes(kw) && !resumeText.includes(kw)).slice(0, 8);
-    const overlapRatio = matched.length / Math.max(matched.length + missing.length, 1);
-    const hasMetrics = /\d+%|\$\d+|\d+x/i.test(data.experience || "");
-    const hasActionVerbs = /led|managed|developed|implemented|increased|improved/i.test(data.experience || "");
-    const baseScore = Math.round(overlapRatio * 60);
-    const bonusScore = (hasMetrics ? 15 : 0) + (hasActionVerbs ? 10 : 0) + (data.skills?.length > 20 ? 10 : 5);
-    const finalScore = Math.min(95, baseScore + bonusScore);
-    return {
-      score: finalScore,
-      matched: matched.length > 0 ? matched : ["project management", "team collaboration", "strategic planning", "problem solving"],
-      missing: missing.length > 0 ? missing : ["stakeholder engagement", "agile methodology", "cross-functional leadership"],
-      tips: [
-        `Add more industry-specific keywords from the job description`,
-        `Include quantifiable achievements with metrics (%, $, #)`,
-        `Use exact phrases from the job posting where truthful`
-      ]
-    };
-  }
-  return null;
-}
-
-// ─── Resume Score Calculator ──────────────────────────────────────────────────
-function calcScore(data: any) {
-  const checks = [
-    { label: "Has full name",         pass: data.name?.trim().length > 2,          points: 10 },
-    { label: "Has job title",         pass: data.role?.trim().length > 2,          points: 10 },
-    { label: "Has email",             pass: /\S+@\S+/.test(data.email ?? ""),      points: 8  },
-    { label: "Has phone",             pass: data.phone?.trim().length > 5,         points: 8  },
-    { label: "Has location",          pass: data.location?.trim().length > 2,      points: 5  },
-    { label: "Has LinkedIn",          pass: data.linkedin?.trim().length > 5,      points: 5  },
-    { label: "Summary written",       pass: data.summary?.trim().length > 50,      points: 12 },
-    { label: "Summary is specific",   pass: data.summary?.trim().length > 120,     points: 5  },
-    { label: "Experience listed",     pass: data.experience?.trim().length > 50,   points: 12 },
-    { label: "Uses bullet points",    pass: data.experience?.includes("•"),        points: 5  },
-    { label: "Education listed",      pass: data.education?.trim().length > 10,    points: 8  },
-    { label: "Skills listed",         pass: data.skills?.trim().length > 5,        points: 5  },
-    { label: "Achievements listed",   pass: data.achievements?.trim().length > 10, points: 5  },
-    { label: "Certifications listed", pass: data.certifications?.trim().length > 5,points: 3  },
-    { label: "Has impact numbers",    pass: /\d+%|\$\d+|\d+x/i.test(data.experience ?? "") || /\d+%|\$\d+|\d+x/i.test(data.achievements ?? ""), points: 5 },
-    { label: "Strong action verbs",   pass: /led|built|grew|increased|launched|managed|created|delivered|improved|developed/i.test(data.experience ?? ""), points: 4 },
-  ];
-  const total = checks.reduce((s, c) => s + c.points, 0);
-  const earned = checks.filter(c => c.pass).reduce((s, c) => s + c.points, 0);
-  return { score: Math.round((earned / total) * 100), checks };
-}
-
-// ─── Interview Probability Score ─────────────────────────────────────────────
-function calcInterviewProb(data: any): { probability: number; factors: { label: string; impact: number; status: "positive" | "neutral" | "negative" }[] } {
-  const factors: { label: string; impact: number; status: "positive" | "neutral" | "negative" }[] = [];
-  let base = 30;
-  const hasAllContact = data.name && data.email && data.phone && data.location;
-  if (hasAllContact) { base += 8; factors.push({ label: "Complete contact info", impact: +8, status: "positive" }); }
-  else { factors.push({ label: "Missing contact fields", impact: -5, status: "negative" }); }
-  const summaryLen = (data.summary || "").length;
-  if (summaryLen > 200) { base += 12; factors.push({ label: "Strong summary (200+ chars)", impact: +12, status: "positive" }); }
-  else if (summaryLen > 80) { base += 6; factors.push({ label: "Summary could be richer", impact: +6, status: "neutral" }); }
-  else { factors.push({ label: "Summary too short", impact: -8, status: "negative" }); }
-  const hasNumbers = /\d+%|\$\d+|\d+x|\d+ (people|projects|clients|team)/i.test((data.experience || "") + (data.achievements || ""));
-  if (hasNumbers) { base += 15; factors.push({ label: "Quantified achievements", impact: +15, status: "positive" }); }
-  else { factors.push({ label: "No metrics in experience", impact: -10, status: "negative" }); }
-  const strongVerbs = /\b(led|spearheaded|launched|engineered|architected|grew|scaled|increased|decreased|improved|delivered|managed|built|developed|designed|executed)\b/i.test(data.experience || "");
-  if (strongVerbs) { base += 10; factors.push({ label: "Strong action verbs", impact: +10, status: "positive" }); }
-  else { factors.push({ label: "Weak verbs (try: led, built, scaled)", impact: -5, status: "negative" }); }
-  const skillCount = (data.skills || "").split(',').filter((s: string) => s.trim()).length;
-  if (skillCount >= 6) { base += 8; factors.push({ label: `${skillCount} skills listed`, impact: +8, status: "positive" }); }
-  else if (skillCount > 0) { base += 3; factors.push({ label: "Add more skills (aim 6+)", impact: +3, status: "neutral" }); }
-  if ((data.education || "").length > 10) { base += 5; factors.push({ label: "Education listed", impact: +5, status: "positive" }); }
-  if ((data.certifications || "").length > 5) { base += 5; factors.push({ label: "Certifications boost credibility", impact: +5, status: "positive" }); }
-  if ((data.linkedin || "").length > 5) { base += 7; factors.push({ label: "LinkedIn profile included", impact: +7, status: "positive" }); }
-  return { probability: Math.min(97, Math.max(10, base)), factors: factors.slice(0, 7) };
-}
-
-// ─── Progress Bar Component ───────────────────────────────────────────────────
-function ProgressBar({ data, dark }: { data: any; dark: boolean }) {
-  const { score, checks } = calcScore(data);
-  const completedFields = checks.filter(c => c.pass).length;
-  const totalFields = checks.length;
-  const color = score >= 80 ? "#22c55e" : score >= 60 ? "#f59e0b" : "#ef4444";
-  const label = score >= 80 ? "Excellent" : score >= 60 ? "Good" : score >= 40 ? "Fair" : "Needs Work";
+// ─── Reusable Editor Subcomponents ───────────────────────────────────────────
+function WordCountBadge({ text, dark, target }: { text: string; dark: boolean; target?: number }) {
+  const words = text ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+  const pct = target ? Math.min(100, Math.round((words / target) * 100)) : null;
+  const color = !target ? (dark ? "#64748b" : "#94a3b8") : pct! >= 75 ? "#16a34a" : pct! >= 40 ? "#d97706" : "#64748b";
   return (
-    <div className={`${dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} border rounded-xl p-3 space-y-2`}>
-      <div className="flex justify-between items-center">
-        <span className={`text-[9px] font-black uppercase tracking-widest ${dark ? 'text-slate-400' : 'text-slate-500'}`}>
-          {completedFields}/{totalFields} fields
-        </span>
-        <span className="text-[10px] font-black" style={{ color }}>{score}% · {label}</span>
-      </div>
-      <div className={`h-2 rounded-full ${dark ? 'bg-slate-700' : 'bg-slate-100'} overflow-hidden`}>
-        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${score}%`, backgroundColor: color }} />
-      </div>
-    </div>
-  );
-}
-
-// ─── Save/Load Manager ────────────────────────────────────────────────────────
-interface SavedResume {
-  id: string; name: string; data: any; template: string; themeColor: string; savedAt: string;
-}
-
-function SaveLoadPanel({ data, template, themeColor, onLoad, dark }: {
-  data: any; template: string; themeColor: string;
-  onLoad: (d: any, t: string, c: string) => void; dark: boolean;
-}) {
-  const [saves, setSaves] = useState<SavedResume[]>([]);
-  const [saveName, setSaveName] = useState("");
-  const [showPanel, setShowPanel] = useState(false);
-
-  useEffect(() => {
-    try { const stored = localStorage.getItem("bosco_resumes"); if (stored) setSaves(JSON.parse(stored)); } catch {}
-  }, [showPanel]);
-
-  const saveResume = () => {
-    const name = saveName.trim() || `Resume ${new Date().toLocaleDateString()}`;
-    const newSave: SavedResume = { id: Date.now().toString(), name, data, template, themeColor, savedAt: new Date().toISOString() };
-    const updated = [newSave, ...saves.filter(s => s.name !== name)].slice(0, 10);
-    localStorage.setItem("bosco_resumes", JSON.stringify(updated));
-    setSaves(updated); setSaveName("");
-  };
-
-  const deleteResume = (id: string) => {
-    const updated = saves.filter(s => s.id !== id);
-    localStorage.setItem("bosco_resumes", JSON.stringify(updated));
-    setSaves(updated);
-  };
-
-  const bg = dark ? 'bg-slate-800 border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800';
-  const inputBg = dark ? 'bg-slate-700 border-slate-600 text-slate-100 placeholder:text-slate-400' : 'bg-white border-slate-200 text-slate-800';
-
-  return (
-    <div className="relative">
-      <button onClick={() => setShowPanel(!showPanel)}
-        className={`flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border transition-colors ${dark ? 'border-slate-600 text-slate-300 hover:text-blue-400' : 'border-slate-200 text-slate-500 hover:text-blue-600'}`}>
-        <FolderOpen size={11}/> Saves {saves.length > 0 && <span className="bg-blue-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[8px]">{saves.length}</span>}
-      </button>
-      {showPanel && (
-        <div className={`absolute right-0 top-10 w-72 ${bg} border rounded-2xl shadow-2xl z-50 p-4 space-y-3`}>
-          <div className="flex justify-between items-center">
-            <p className="text-[10px] font-black uppercase">Save & Load</p>
-            <button onClick={() => setShowPanel(false)}><X size={14} className="text-slate-400"/></button>
-          </div>
-          <div className="flex gap-2">
-            <input placeholder="Version name..." value={saveName} onChange={e => setSaveName(e.target.value)}
-              className={`flex-1 p-2 rounded-lg border text-xs ${inputBg}`}/>
-            <button onClick={saveResume} className="bg-blue-600 text-white px-3 py-2 rounded-lg text-xs font-black flex items-center gap-1 hover:bg-blue-500">
-              <Save size={10}/> Save
-            </button>
-          </div>
-          {saves.length === 0 && <p className={`text-[10px] text-center py-4 ${dark ? 'text-slate-500' : 'text-slate-400'}`}>No saved resumes yet</p>}
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {saves.map(s => (
-              <div key={s.id} className={`flex items-center gap-2 p-2 rounded-xl border ${dark ? 'border-slate-700' : 'border-slate-100 bg-slate-50'}`}>
-                <div className="w-3 h-3 rounded-full shrink-0" style={{backgroundColor: s.themeColor}}/>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black truncate">{s.name}</p>
-                  <p className={`text-[8px] ${dark ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(s.savedAt).toLocaleDateString()}</p>
-                </div>
-                <button onClick={() => { onLoad(s.data, s.template, s.themeColor); setShowPanel(false); }}
-                  className="text-[8px] font-black uppercase text-blue-600 hover:underline shrink-0">Load</button>
-                <button onClick={() => deleteResume(s.id)} className="text-slate-300 hover:text-red-400 shrink-0"><Trash2 size={11}/></button>
-              </div>
-            ))}
-          </div>
+    <div className="flex items-center gap-2 mt-1">
+      <span className="text-[10px] font-semibold" style={{ color }}>{words} words{target ? ` · aim ~${target}` : ""}</span>
+      {target && (
+        <div className={`flex-1 max-w-[72px] h-1 rounded-full overflow-hidden ${dark ? "bg-slate-700" : "bg-slate-200"}`}>
+          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
         </div>
       )}
     </div>
   );
 }
 
-// ─── PDF Download ─────────────────────────────────────────────────────────────
-function PDFDownloadButton({ dark, docId = "resume-document", label = "Download PDF" }: {
-  dark: boolean; docId?: string; label?: string;
+function RichTextarea({ label, fieldKey, value, onChange, rows, dark, wordTarget, placeholder }: {
+  label: string; fieldKey: keyof ResumeData; value: string; onChange: (k: keyof ResumeData, v: string) => void;
+  rows: number; dark: boolean; wordTarget?: number; placeholder?: string;
 }) {
-  const [loading, setLoading] = useState(false);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const selRef = useRef({ start: 0, end: 0 });
+  const saveSel = () => { if (taRef.current) selRef.current = { start: taRef.current.selectionStart, end: taRef.current.selectionEnd }; };
 
-  const download = async () => {
-    setLoading(true);
-    try {
-      const el = document.getElementById(docId);
-      if (!el) { setLoading(false); return; }
-
-      // Deep clone the document element
-      const clone = el.cloneNode(true) as HTMLElement;
-
-      // Strip ALL transforms, scales, margins from clone and every descendant
-      const stripTransforms = (node: HTMLElement) => {
-        node.style.transform = 'none';
-        node.style.transformOrigin = 'top left';
-        node.style.margin = '0';
-        node.style.position = 'static';
-        Array.from(node.children).forEach(child => stripTransforms(child as HTMLElement));
-      };
-      stripTransforms(clone);
-
-      // Force exact A4 dimensions, no overflow
-      clone.style.width = '210mm';
-      clone.style.maxWidth = '210mm';
-      clone.style.minHeight = 'auto';
-      clone.style.height = 'auto';
-      clone.style.overflow = 'visible';
-      clone.style.boxSizing = 'border-box';
-      clone.style.position = 'relative';
-      clone.style.padding = '0';
-
-      // Collect only Tailwind styles (skip external sheets that may fail CORS)
-      const styleTexts: string[] = [];
-      Array.from(document.styleSheets).forEach(sheet => {
-        try {
-          const rules = Array.from(sheet.cssRules).map(r => r.cssText).join('\n');
-          styleTexts.push(rules);
-        } catch { /* cross-origin, skip */ }
-      });
-
-      const printWindow = window.open('', '_blank', 'width=900,height=1200,menubar=no,toolbar=no,location=no,status=no,scrollbars=no');
-      if (!printWindow) { setLoading(false); return; }
-
-      const html = [
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><title></title>',
-        '<script src="https://cdn.tailwindcss.com"><\/script>',
-        '<style>',
-        styleTexts.join('\n'),
-        '*,*::before,*::after{box-sizing:border-box!important}',
-        'html,body{margin:0!important;padding:0!important;background:white!important;width:210mm!important;height:auto!important;overflow:visible!important}',
-        '@page{size:A4 portrait;margin:0mm!important}',
-        '@media print{',
-        'html,body{width:210mm!important;margin:0!important;padding:0!important;background:white!important;overflow:visible!important}',
-        '*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}',
-        '.text-slate-400{color:#475569!important}.text-slate-300{color:#475569!important}',
-        '.text-slate-200{color:#64748b!important}.text-gray-400{color:#4b5563!important}',
-        'body{page-break-after:avoid!important}',
-        '}',
-        '<\/style>',
-        '<\/head><body>',
-        clone.outerHTML,
-        '<script>document.title="";window.onload=function(){setTimeout(function(){window.print();setTimeout(function(){window.close();},1000);},1200);};<\/script>',
-        '<\/body><\/html>'
-      ].join('\n');
-      printWindow.document.write(html);
-      printWindow.document.close();
-    } catch(err) { console.error(err); }
-    setLoading(false);
+  const format = (type: "bold" | "italic" | "bullet") => {
+    const { start, end } = selRef.current;
+    const sel = value.slice(start, end);
+    let next = value, ns = start, ne = end;
+    if (type === "bold") {
+      if (sel) { next = value.slice(0, start) + `**${sel}**` + value.slice(end); ne = end + 4; }
+      else { next = value.slice(0, start) + "**highlight**" + value.slice(end); ns = start + 2; ne = start + 11; }
+    } else if (type === "italic") {
+      if (sel) { next = value.slice(0, start) + `_${sel}_` + value.slice(end); ne = end + 2; }
+      else { next = value.slice(0, start) + "_emphasis_" + value.slice(end); ns = start + 1; ne = start + 9; }
+    } else {
+      if (sel) {
+        const lines = sel.split("\n").map(l => l.startsWith("• ") ? l.slice(2) : `• ${l}`).join("\n");
+        next = value.slice(0, start) + lines + value.slice(end);
+        ne = start + lines.length;
+      } else {
+        const ls = value.lastIndexOf("\n", start - 1) + 1;
+        next = value.slice(0, ls) + "• " + value.slice(ls);
+        ns = start + 2; ne = ns;
+      }
+    }
+    onChange(fieldKey, next);
+    selRef.current = { start: ns, end: ne };
+    requestAnimationFrame(() => { if (taRef.current) { taRef.current.focus(); taRef.current.setSelectionRange(ns, ne); } });
   };
 
-  return (
-    <div className="relative group">
-      <button onClick={download} disabled={loading}
-        className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[9px] font-black uppercase bg-green-600 text-white hover:bg-green-500 transition-colors disabled:opacity-60">
-        {loading ? <Loader size={11} className="animate-spin"/> : <Download size={11}/>}
-        {loading ? "Preparing..." : label}
-      </button>
-      <div className="absolute bottom-full left-0 mb-2 w-64 bg-slate-900 text-white text-[9px] rounded-lg p-2.5 hidden group-hover:block z-50 leading-relaxed shadow-xl">
-        <p className="font-black mb-1 text-green-400">📋 For clean PDF (no watermarks):</p>
-        <p>In the print dialog → <strong>More settings</strong> → uncheck <strong>"Headers and footers"</strong></p>
-        <p className="mt-1 text-slate-400">Also set margins to "None" for best results.</p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Industry Filter ──────────────────────────────────────────────────────────
-const INDUSTRY_TEMPLATES: Record<string, { templates: string[], label: string, color: string }> = {
-  all:       { templates: ['richard','brandon','lauren','minimal','creative','corporate','grid','split'], label: "All",       color: "#6366f1" },
-  tech:      { templates: ['minimal','creative','grid','brandon'],                                        label: "Tech",      color: "#3b82f6" },
-  creative:  { templates: ['creative','lauren','brandon','richard'],                                      label: "Creative",  color: "#f97316" },
-  corporate: { templates: ['corporate','richard','split','grid'],                                         label: "Corporate", color: "#0a1e3c" },
-  modern:    { templates: ['split','brandon','minimal','grid'],                                           label: "Modern",    color: "#10b981" },
-};
-
-function IndustryFilter({ selected, onSelect, dark }: { selected: string; onSelect: (k: string) => void; dark: boolean }) {
-  return (
-    <div className="flex gap-2 flex-wrap">
-      {Object.entries(INDUSTRY_TEMPLATES).map(([key, { label, color }]) => (
-        <button key={key} onClick={() => onSelect(key)}
-          className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border-2 transition-all ${selected === key ? 'text-white border-transparent' : `${dark ? 'border-slate-600 text-slate-400' : 'border-slate-200 text-slate-400'}`}`}
-          style={selected === key ? { backgroundColor: color, borderColor: color } : {}}>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ─── Auto-Save Hook ───────────────────────────────────────────────────────────
-function useAutoSave(data: any, template: string, themeColor: string) {
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSaving(true);
-      try {
-        localStorage.setItem("bosco_autosave", JSON.stringify({ data, template, themeColor, savedAt: new Date().toISOString() }));
-        setLastSaved(new Date());
-      } catch {}
-      setTimeout(() => setSaving(false), 500);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [data, template, themeColor]);
-  return { lastSaved, saving };
-}
-
-// ─── LinkedIn Import ──────────────────────────────────────────────────────────
-function LinkedInImport({ onImport, dark }: { onImport: (fields: any) => void; dark: boolean }) {
-  const [open, setOpen] = useState(false);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
-
-  const parseProfile = async () => {
-    if (!input.trim()) return;
-    setLoading(true);
-    await new Promise(r => setTimeout(r, 1400));
-    const text = input;
-    const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
-    const nameLine = lines.find(l => /^[A-Z][a-z]+ [A-Z]/.test(l) && l.split(' ').length <= 5 && !l.includes('|') && !l.includes('http'));
-    const roleKeywords = /manager|engineer|designer|analyst|developer|director|specialist|consultant|lead|head|vp|president|cto|ceo|founder|officer/i;
-    const roleLine = lines.find((l, i) => roleKeywords.test(l) && l.split(' ').length < 8 && i < 5);
-    const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
-    const phoneMatch = text.match(/(\+?\d[\d\s\-().]{7,15}\d)/);
-    const locationMatch = text.match(/\b([A-Z][a-zA-Z\s]+,\s*[A-Z][a-zA-Z\s]+)\b/);
-    const linkedinMatch = text.match(/linkedin\.com\/in\/[\w-]+/i);
-    const eduKeywords = /university|college|institute|school|bachelor|master|phd|mba|bsc|msc/i;
-    const eduLine = lines.find(l => eduKeywords.test(l));
-    const skillsIdx = lines.findIndex(l => /^skills/i.test(l));
-    const skillsLine = skillsIdx >= 0 ? lines.slice(skillsIdx + 1, skillsIdx + 3).join(', ') : "";
-    const expLines = lines.filter(l => /•|\d{4}|present|current|\|/i.test(l)).slice(0, 6);
-    const parsed: any = {};
-    if (nameLine) parsed.name = nameLine;
-    if (roleLine) parsed.role = roleLine;
-    if (emailMatch) parsed.email = emailMatch[0];
-    if (phoneMatch) parsed.phone = phoneMatch[0].trim();
-    if (locationMatch) parsed.location = locationMatch[1];
-    if (linkedinMatch) parsed.linkedin = linkedinMatch[0];
-    if (eduLine) parsed.education = eduLine;
-    if (skillsLine) parsed.skills = skillsLine;
-    if (expLines.length > 0) parsed.experience = expLines.join('\n');
-    const summaryLine = lines.find(l => l.length > 80 && !eduKeywords.test(l) && !roleKeywords.test(l));
-    if (summaryLine) parsed.summary = summaryLine;
-    onImport(parsed);
-    setLoading(false); setDone(true);
-    setTimeout(() => { setDone(false); setOpen(false); setInput(""); }, 1800);
-  };
-
-  const bg = dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200';
-  const inputCls = dark ? 'bg-slate-700 border-slate-600 text-slate-100 placeholder:text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400';
+  const btnCls = `p-1.5 rounded transition-colors ${dark ? "text-slate-400 hover:text-white hover:bg-slate-600" : "text-slate-500 hover:text-slate-900 hover:bg-slate-200"}`;
 
   return (
     <div>
-      <button onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-blue-400 text-blue-600 text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
-        <Linkedin size={13}/> Import from LinkedIn
-      </button>
-      {open && (
-        <div className={`mt-2 ${bg} border rounded-2xl p-4 space-y-3 shadow-xl`}>
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-black uppercase text-blue-600">LinkedIn Import</p>
-            <button onClick={() => setOpen(false)}><X size={13} className="text-slate-400"/></button>
-          </div>
-          <textarea value={input} onChange={e => setInput(e.target.value)}
-            placeholder="Paste your LinkedIn profile bio here..."
-            rows={5} className={`w-full p-3 rounded-xl border text-[11px] resize-none focus:outline-none ${inputCls}`}/>
-          <button onClick={parseProfile} disabled={loading || !input.trim()}
-            className={`w-full py-2.5 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50 ${done ? 'bg-green-600 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}>
-            {loading ? <><Loader size={12} className="animate-spin"/> Parsing...</> : done ? <><CheckCircle size={12}/> Filled!</> : <><Wand2 size={12}/> Parse & Fill</>}
-          </button>
+      <label className={`block text-[11px] font-bold mb-1 ${dark ? "text-slate-300" : "text-slate-700"}`}>{label}</label>
+      <div className={`rounded-xl border overflow-hidden transition-colors focus-within:ring-2 focus-within:ring-blue-500/30 ${dark ? "border-slate-700" : "border-slate-200"}`}>
+        <div className={`flex items-center gap-1 px-2 py-1 border-b ${dark ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-200"}`}>
+          <button type="button" title="Bold" className={btnCls} onMouseDown={e => { e.preventDefault(); format("bold"); }}><Bold size={12} /></button>
+          <button type="button" title="Italic" className={btnCls} onMouseDown={e => { e.preventDefault(); format("italic"); }}><Italic size={12} /></button>
+          <button type="button" title="Bullet Point" className={btnCls} onMouseDown={e => { e.preventDefault(); format("bullet"); }}><List size={12} /></button>
+          <span className={`ml-auto text-[10px] ${dark ? "text-slate-500" : "text-slate-400"}`}>Markdown supported</span>
         </div>
-      )}
+        <textarea
+          ref={taRef}
+          rows={rows}
+          placeholder={placeholder}
+          value={value}
+          onChange={e => onChange(fieldKey, e.target.value)}
+          onSelect={saveSel} onKeyUp={saveSel} onMouseUp={saveSel} onFocus={saveSel}
+          className={`w-full p-3 text-sm leading-relaxed resize-y focus:outline-none ${dark ? "bg-slate-900 text-slate-100 placeholder:text-slate-500" : "bg-white text-slate-900 placeholder:text-slate-400"}`}
+        />
+      </div>
+      <WordCountBadge text={value} dark={dark} target={wordTarget} />
     </div>
   );
 }
 
-// ─── Grammar Checker ──────────────────────────────────────────────────────────
-interface GrammarIssue {
-  field: string; original: string; suggestion: string; type: "spelling"|"grammar"|"style"; message: string;
+// ─── PDF Print Helper ────────────────────────────────────────────────────────
+function exportCleanPDF(docId: string) {
+  const el = document.getElementById(docId);
+  if (!el) return;
+  const clone = el.cloneNode(true) as HTMLElement;
+  clone.style.transform = "none";
+  clone.style.margin = "0";
+  clone.style.width = "210mm";
+  clone.style.minHeight = "297mm";
+  clone.style.boxShadow = "none";
+
+  const styleTexts: string[] = [];
+  Array.from(document.styleSheets).forEach(sheet => {
+    try { styleTexts.push(Array.from(sheet.cssRules).map(r => r.cssText).join("\n")); } catch {}
+  });
+
+  const w = window.open("", "_blank", "width=900,height=1200");
+  if (!w) { window.print(); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Resume</title>
+  <script src="https://cdn.tailwindcss.com"><\/script>
+  <style>${styleTexts.join("\n")}
+  @page{size:A4 portrait;margin:0}
+  html,body{margin:0;padding:0;background:#fff;width:210mm}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  </style></head><body>${clone.outerHTML}
+  <script>window.onload=function(){setTimeout(function(){window.print();},900);};<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
-function checkGrammar(data: any): GrammarIssue[] {
-  const issues: GrammarIssue[] = [];
-  const misspellings: Record<string, string> = {
-    "recieve":"receive","occured":"occurred","seperate":"separate","definately":"definitely",
-    "accomodate":"accommodate","achive":"achieve","acheive":"achieve","becomming":"becoming",
-    "experiance":"experience","experince":"experience","managment":"management","professionaly":"professionally",
-    "recomend":"recommend","succesfull":"successful","successfull":"successful","tecnical":"technical",
-  };
-  const weakPhrases: { pattern: RegExp; suggestion: string; message: string }[] = [
-    { pattern: /\bresponsible for\b/gi, suggestion: "Led / Managed / Oversaw", message: "Weak phrase — use a strong action verb" },
-    { pattern: /\bhelped (to|with)?\b/gi, suggestion: "Contributed to / Accelerated", message: "Vague — be specific about your role" },
-    { pattern: /\bworked on\b/gi, suggestion: "Developed / Built / Delivered", message: "Weak — use an impact-driven verb" },
-    { pattern: /\bteam player\b/gi, suggestion: "Collaborated cross-functionally with…", message: "Cliché — show, don't tell" },
-    { pattern: /\bpassionate about\b/gi, suggestion: "Drove / Championed / Led", message: "Vague — show passion through results" },
-    { pattern: /\bsynergy\b/gi, suggestion: "Cross-functional collaboration", message: "Overused jargon" },
-  ];
-  const fieldsToCheck = [
-    { key: "summary", label: "Summary" }, { key: "experience", label: "Experience" },
-    { key: "achievements", label: "Achievements" }, { key: "education", label: "Education" },
-  ];
-  for (const { key, label } of fieldsToCheck) {
-    const text: string = (data as any)[key] || "";
-    if (!text) continue;
-    const words = text.split(/\b/);
-    for (const word of words) {
-      const lower = word.toLowerCase().replace(/[^a-z]/g, "");
-      if (misspellings[lower]) {
-        issues.push({ field: label, original: word.trim(), suggestion: misspellings[lower], type: "spelling", message: `"${word.trim()}" may be misspelled` });
-      }
-    }
-    for (const { pattern, suggestion, message } of weakPhrases) {
-      const match = text.match(pattern);
-      if (match) issues.push({ field: label, original: match[0], suggestion, type: "style", message });
-      pattern.lastIndex = 0;
-    }
-    if (key === "experience" && text.length > 30 && !text.includes("•") && !text.includes("-")) {
-      issues.push({ field: label, original: "(no bullets)", suggestion: "Add • before each achievement", type: "grammar", message: "Use bullet points for scannability" });
-    }
-  }
-  return issues.slice(0, 15);
-}
+// ─── Resume Renderer (All 8 Full Templates with Optional Profile Photo) ───────
+function ResumeRenderer({
+  data, template, themeColor, photo, showPhoto, customSections, showQR, labels, fontStack, densityId,
+}: {
+  data: ResumeData; template: string; themeColor: string; photo: string | null; showPhoto: boolean;
+  customSections: CustomSection[]; showQR: boolean; labels: Record<string, string>;
+  fontStack: string; densityId: string;
+}) {
+  const dens = DENSITY_OPTIONS.find(d => d.id === densityId) || DENSITY_OPTIONS[1];
+  const activePhoto = showPhoto ? photo : null;
+  const qrUrl = data.linkedin || data.website || `mailto:${data.email}`;
+  const skillList = (data.skills || "").split(",").map(s => s.trim()).filter(Boolean);
+  const validCustom = (customSections || []).filter(s => s.title.trim() || s.content.trim());
 
-// ─── Job Board Links ──────────────────────────────────────────────────────────
-const JOB_BOARDS = [
-  { name: "LinkedIn Jobs", url: "https://linkedin.com/jobs/search/", color: "#0077b5", icon: "🔗" },
-  { name: "Indeed", url: "https://indeed.com/jobs", color: "#003a9b", icon: "🔍" },
-  { name: "Glassdoor", url: "https://glassdoor.com/Job/jobs.htm", color: "#0caa41", icon: "🏢" },
-  { name: "Remote.co", url: "https://remote.co/remote-jobs/", color: "#1d6fce", icon: "🌐" },
-  { name: "We Work Remotely", url: "https://weworkremotely.com/", color: "#41a334", icon: "💻" },
-  { name: "Wellfound", url: "https://wellfound.com/jobs", color: "#fb6404", icon: "🚀" },
-  { name: "Toptal", url: "https://toptal.com/", color: "#204ecf", icon: "⭐" },
-  { name: "FlexJobs", url: "https://flexjobs.com/", color: "#1b998b", icon: "🕐" },
-];
+  const wrapperStyle: React.CSSProperties = { fontFamily: fontStack };
 
-function JobBoardLinks({ data, dark }: { data: any; dark: boolean }) {
-  const [searchTerm, setSearchTerm] = useState(data.role || "");
-  const [location, setLocation] = useState(data.location || "");
-  const buildUrl = (baseUrl: string) => {
-    const params = new URLSearchParams();
-    if (searchTerm) params.set('q', searchTerm);
-    if (location) params.set('l', location);
-    const query = params.toString();
-    return query ? `${baseUrl}?${query}` : baseUrl;
-  };
-  const inputCls = dark ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-800 placeholder:text-slate-400';
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <input placeholder="Job title / keywords" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-          className={`w-full p-2.5 rounded-xl border text-xs ${inputCls}`}/>
-        <input placeholder="Location (city or 'Remote')" value={location} onChange={e => setLocation(e.target.value)}
-          className={`w-full p-2.5 rounded-xl border text-xs ${inputCls}`}/>
-      </div>
-      <div className="space-y-2">
-        {JOB_BOARDS.map((board, i) => (
-          <a key={i} href={buildUrl(board.url)} target="_blank" rel="noopener noreferrer"
-            className={`flex items-center gap-3 p-3 rounded-2xl border transition-all hover:-translate-y-0.5 hover:shadow-md group ${dark ? 'bg-slate-800 border-slate-700 hover:border-blue-500' : 'bg-white border-slate-200 hover:border-blue-400'}`}>
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center text-base shrink-0"
-              style={{ backgroundColor: `${board.color}18`, border: `1.5px solid ${board.color}30` }}>
-              {board.icon}
-            </div>
-            <p className={`text-[11px] font-black flex-1 ${dark ? 'text-slate-100' : 'text-slate-800'}`}>{board.name}</p>
-            <ExternalLinkIcon size={12} className={`${dark ? 'text-slate-500' : 'text-slate-300'} shrink-0`}/>
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Testimonials ─────────────────────────────────────────────────────────────
-const TESTIMONIALS = [
-  { name: "Amara Osei", role: "Software Engineer → Google", avatar: "AO", color: "#3b82f6", rating: 5, text: "Got 3 interviews in 1 week. The ATS checker showed me I was missing 8 keywords — fixed them and my callback rate tripled." },
-  { name: "Fatima Al-Rashid", role: "Marketing Exec → Shopify", avatar: "FA", color: "#f97316", rating: 5, text: "The AI Writer gave me polished bullet points with real numbers. Went from 0 to 4 callbacks in 10 days." },
-  { name: "Luca Ferreira", role: "Recent Grad → McKinsey", avatar: "LF", color: "#10b981", rating: 5, text: "Picked the Corporate template, ran the grammar checker, and got a McKinsey interview on my first application." },
-  { name: "Priya Nair", role: "Teacher → UX Designer", avatar: "PN", color: "#8b5cf6", rating: 5, text: "Career changing is scary. Resume.AI helped me translate my teaching experience into UX language. The LinkedIn import saved me an hour." },
-  { name: "James Kowalski", role: "Freelancer → Netflix", avatar: "JK", color: "#ef4444", rating: 5, text: "Used 3 different resume tools. This one is different — the live score kept me honest and the templates look like a real designer made them." },
-  { name: "Chen Wei", role: "Mid-level → VP at Stripe", avatar: "CW", color: "#0a1e3c", rating: 5, text: "Two hours with Resume.AI and I had something I was proud to send. Got the Stripe offer." },
-];
-
-// ─── AI Panel ─────────────────────────────────────────────────────────────────
-function AIPanel({ data, onUpdate, dark }: { data: any; onUpdate: (k: string, v: string) => void; dark: boolean }) {
-  const [activeTab, setActiveTab] = useState<"score"|"writer"|"ats"|"grammar"|"jobs">("score");
-  const scoreData = calcScore(data);
-  const scoreColor = scoreData.score >= 80 ? "#22c55e" : scoreData.score >= 60 ? "#f59e0b" : "#ef4444";
-  const scoreLabel = scoreData.score >= 80 ? "Excellent" : scoreData.score >= 60 ? "Good" : "Needs Work";
-  const interviewData = calcInterviewProb(data);
-
-  const [writerLoading, setWriterLoading] = useState(false);
-  const [writerResult, setWriterResult] = useState<any>(null);
-  const [writerError, setWriterError] = useState("");
-
-  const runAIWriter = async () => {
-    setWriterLoading(true); setWriterError(""); setWriterResult(null);
-    try { const result = await simulateAI("writer", data); setWriterResult(result); }
-    catch { setWriterError("Could not generate. Please try again."); }
-    setWriterLoading(false);
-  };
-
-  const applyAll = () => {
-    if (!writerResult) return;
-    onUpdate("summary", writerResult.summary);
-    onUpdate("experience", writerResult.experience);
-    onUpdate("achievements", writerResult.achievements);
-    setWriterResult(null);
-  };
-
-  const [jobDesc, setJobDesc] = useState("");
-  const [atsLoading, setAtsLoading] = useState(false);
-  const [atsResult, setAtsResult] = useState<any>(null);
-  const [atsError, setAtsError] = useState("");
-
-  const runATS = async () => {
-    if (!jobDesc.trim()) { setAtsError("Please paste a job description first."); return; }
-    setAtsLoading(true); setAtsError(""); setAtsResult(null);
-    try { const result = await simulateAI("ats", data, jobDesc); setAtsResult(result); }
-    catch { setAtsError("Could not analyze. Please try again."); }
-    setAtsLoading(false);
-  };
-
-  const tabs = [
-    { id: "score",   label: "Score",   icon: <BarChart2 size={11}/> },
-    { id: "writer",  label: "Writer",  icon: <PenTool size={11}/> },
-    { id: "ats",     label: "ATS",     icon: <Search size={11}/> },
-    { id: "grammar", label: "Grammar", icon: <SpellCheck size={11}/> },
-    { id: "jobs",    label: "Jobs",    icon: <BriefcaseIcon size={11}/> },
-  ] as const;
-
-  const panelBg = dark ? 'bg-slate-900' : 'bg-white';
-  const tabBarBg = dark ? 'bg-slate-800' : 'bg-slate-50';
-  const activeTabCls = dark ? 'border-blue-400 text-blue-400 bg-slate-900' : 'border-blue-600 text-blue-600 bg-white';
-  const inactiveTab = dark ? 'border-transparent text-slate-500 hover:text-slate-300' : 'border-transparent text-slate-400 hover:text-slate-600';
-  const cardBg = dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200';
-  const textMuted = dark ? 'text-slate-400' : 'text-slate-500';
-
-  return (
-    <div className={`flex flex-col h-full ${panelBg}`}>
-      <div className={`flex border-b ${dark ? 'border-slate-700' : 'border-slate-100'} ${tabBarBg}`}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`flex-1 flex items-center justify-center gap-1 py-3 text-[8px] font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === t.id ? activeTabCls : inactiveTab}`}>
-            {t.icon}<span className="hidden sm:inline">{t.label}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {activeTab === "score" && (
-          <div className="space-y-4">
-            <div className="flex flex-col items-center py-4">
-              <div className="relative w-28 h-28">
-                <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                  <circle cx="50" cy="50" r="42" fill="none" stroke={dark ? "#1e293b" : "#f1f5f9"} strokeWidth="10"/>
-                  <circle cx="50" cy="50" r="42" fill="none" stroke={scoreColor} strokeWidth="10"
-                    strokeDasharray={`${2*Math.PI*42}`}
-                    strokeDashoffset={`${2*Math.PI*42*(1-scoreData.score/100)}`}
-                    strokeLinecap="round" style={{transition:"stroke-dashoffset 0.8s ease"}}/>
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-3xl font-black" style={{color:scoreColor}}>{scoreData.score}</span>
-                  <span className={`text-[8px] font-black uppercase ${textMuted}`}>/ 100</span>
-                </div>
+  if (template === "minimal") {
+    return (
+      <div id="resume-document" style={wrapperStyle} className={`w-[210mm] min-h-[297mm] bg-white text-slate-900 ${dens.pad}`}>
+        <div className="flex items-start justify-between gap-6 border-b-2 pb-6 mb-7" style={{ borderColor: themeColor }}>
+          <div className="flex items-center gap-5">
+            {activePhoto && <img src={activePhoto} alt={data.name} className="w-20 h-20 rounded-xl object-cover border border-slate-200 shrink-0" />}
+            <div>
+              <h1 className="text-3xl font-black tracking-tight text-slate-900">{data.name}</h1>
+              <p className="text-sm font-semibold mt-1" style={{ color: themeColor }}>{data.role}</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-600 mt-2.5">
+                {data.email && <span className="flex items-center gap-1"><Mail size={10} />{data.email}</span>}
+                {data.phone && <span className="flex items-center gap-1"><Phone size={10} />{data.phone}</span>}
+                {data.location && <span className="flex items-center gap-1"><MapPin size={10} />{data.location}</span>}
+                {data.linkedin && <span className="flex items-center gap-1"><Globe size={10} />{data.linkedin}</span>}
+                {data.website && <span className="flex items-center gap-1"><ExternalLink size={10} />{data.website}</span>}
               </div>
-              <p className="text-sm font-black uppercase tracking-widest mt-2" style={{color:scoreColor}}>{scoreLabel}</p>
-            </div>
-
-            <div className={`${dark ? 'bg-gradient-to-br from-indigo-900/40 to-purple-900/30 border-indigo-700' : 'bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-100'} rounded-2xl p-4 border space-y-3`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TrendingUp size={14} className="text-indigo-500"/>
-                  <p className={`text-[10px] font-black uppercase ${dark ? 'text-indigo-300' : 'text-indigo-700'}`}>Interview Probability</p>
-                </div>
-                <span className="text-2xl font-black" style={{ color: interviewData.probability >= 70 ? "#22c55e" : interviewData.probability >= 50 ? "#f59e0b" : "#ef4444" }}>
-                  {interviewData.probability}%
-                </span>
-              </div>
-              <div className={`h-2.5 rounded-full overflow-hidden ${dark ? 'bg-slate-700' : 'bg-white/60'}`}>
-                <div className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${interviewData.probability}%`, background: interviewData.probability >= 70 ? 'linear-gradient(90deg, #10b981, #22c55e)' : interviewData.probability >= 50 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, #ef4444, #f87171)' }}/>
-              </div>
-              <div className="space-y-1.5">
-                {interviewData.factors.map((f, i) => (
-                  <div key={i} className={`flex items-center gap-2 text-[10px] rounded-xl px-2 py-1.5 ${f.status === 'positive' ? (dark ? 'bg-green-900/20 text-green-300' : 'bg-green-50 text-green-700') : f.status === 'negative' ? (dark ? 'bg-red-900/20 text-red-300' : 'bg-red-50 text-red-600') : (dark ? 'bg-amber-900/20 text-amber-300' : 'bg-amber-50 text-amber-700')}`}>
-                    <span className="shrink-0 font-black">{f.status === 'positive' ? '+' : f.status === 'negative' ? '−' : '~'}{Math.abs(f.impact)}</span>
-                    <span className="flex-1">{f.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className={`text-[9px] font-black uppercase tracking-widest ${textMuted} mb-2`}>Checklist</p>
-              {scoreData.checks.map((c, i) => (
-                <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-medium ${c.pass ? (dark ? 'bg-green-900/30 text-green-400' : 'bg-green-50 text-green-700') : (dark ? 'bg-red-900/30 text-red-400' : 'bg-red-50 text-red-500')}`}>
-                  {c.pass ? <CheckCircle size={13} className="shrink-0"/> : <AlertCircle size={13} className="shrink-0"/>}
-                  <span className="flex-1">{c.label}</span>
-                  <span className="text-[9px] font-black">+{c.points}</span>
-                </div>
-              ))}
             </div>
           </div>
-        )}
+          {showQR && <QRCodeSVG value={qrUrl} size={56} color={themeColor} />}
+        </div>
 
-        {activeTab === "writer" && (
-          <div className="space-y-4">
-            <div className={`${dark ? 'bg-blue-900/30 border-blue-800' : 'bg-blue-50 border-blue-100'} rounded-2xl p-4 border`}>
-              <div className="flex items-center gap-2 mb-2"><Sparkles size={14} className="text-blue-400"/><p className={`text-[10px] font-black uppercase ${dark ? 'text-blue-300' : 'text-blue-700'}`}>AI Content Generator</p></div>
-              <p className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-600'} leading-relaxed`}>Generate a professional summary, experience bullets, and achievements from your info.</p>
-            </div>
-            <button onClick={runAIWriter} disabled={writerLoading}
-              className="w-full py-3 rounded-xl font-black text-xs uppercase bg-blue-600 text-white hover:bg-blue-500 flex items-center justify-center gap-2 disabled:opacity-60">
-              {writerLoading ? <><Loader size={13} className="animate-spin"/> Generating...</> : <><Sparkles size={13}/> Generate with AI</>}
-            </button>
-            {writerError && <p className="text-[10px] text-red-400 bg-red-900/30 rounded-xl p-3">{writerError}</p>}
-            {writerResult && (
-              <div className="space-y-3">
-                {[["summary","Summary"],["experience","Experience"],["achievements","Achievements"]].map(([k, label]) => (
-                  <div key={k} className={`${cardBg} border rounded-xl p-3`}>
-                    <p className="text-[8px] font-black uppercase text-blue-500 mb-1.5">{label}</p>
-                    <p className={`text-[11px] ${dark ? 'text-slate-300' : 'text-slate-600'} whitespace-pre-wrap leading-relaxed`}>{writerResult[k]}</p>
-                    <button onClick={() => onUpdate(k, writerResult[k])} className="mt-2 text-[9px] font-black uppercase text-blue-500 hover:text-blue-400 flex items-center gap-1"><CheckCircle size={10}/> Apply</button>
-                  </div>
-                ))}
-                <button onClick={applyAll} className="w-full py-3 rounded-xl font-black text-xs uppercase bg-green-600 text-white hover:bg-green-500 flex items-center justify-center gap-2">
-                  <CheckCircle size={13}/> Apply All
-                </button>
-              </div>
+        <div className={dens.gap}>
+          {data.summary && (
+            <section>
+              <h2 className="text-[11px] font-black uppercase tracking-widest mb-2" style={{ color: themeColor }}>{labels.summary}</h2>
+              <div className={`${dens.text} text-slate-700 leading-relaxed`}>{renderText(data.summary)}</div>
+            </section>
+          )}
+          {data.experience && (
+            <section>
+              <h2 className="text-[11px] font-black uppercase tracking-widest border-b border-slate-200 pb-1 mb-2.5" style={{ color: themeColor }}>{labels.experience}</h2>
+              <div className={`${dens.text} text-slate-800 leading-relaxed`}>{renderText(data.experience)}</div>
+            </section>
+          )}
+          {data.achievements && (
+            <section>
+              <h2 className="text-[11px] font-black uppercase tracking-widest border-b border-slate-200 pb-1 mb-2.5" style={{ color: themeColor }}>{labels.achievements}</h2>
+              <div className={`${dens.text} text-slate-800 leading-relaxed`}>{renderText(data.achievements)}</div>
+            </section>
+          )}
+          <div className="grid grid-cols-2 gap-8">
+            {skillList.length > 0 && (
+              <section>
+                <h2 className="text-[11px] font-black uppercase tracking-widest border-b border-slate-200 pb-1 mb-2.5" style={{ color: themeColor }}>{labels.skills}</h2>
+                <div className="flex flex-wrap gap-1.5">
+                  {skillList.map((s, i) => <span key={i} className="text-[9.5px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-800">{s}</span>)}
+                </div>
+              </section>
             )}
-          </div>
-        )}
-
-        {activeTab === "ats" && (
-          <div className="space-y-4">
-            <div className={`${dark ? 'bg-purple-900/30 border-purple-800' : 'bg-purple-50 border-purple-100'} rounded-2xl p-4 border`}>
-              <div className="flex items-center gap-2 mb-2"><Search size={14} className="text-purple-400"/><p className={`text-[10px] font-black uppercase ${dark ? 'text-purple-300' : 'text-purple-700'}`}>ATS Score Checker</p></div>
-              <p className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-600'} leading-relaxed`}>Paste a job description to get your ATS match score.</p>
-            </div>
-            <textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste job description here..."
-              className={`w-full h-32 p-3 rounded-xl border text-[11px] resize-none focus:outline-none ${dark ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-700'}`}/>
-            <button onClick={runATS} disabled={atsLoading}
-              className="w-full py-3 rounded-xl font-black text-xs uppercase bg-purple-600 text-white hover:bg-purple-500 flex items-center justify-center gap-2 disabled:opacity-60">
-              {atsLoading ? <><Loader size={13} className="animate-spin"/> Analyzing...</> : <><Search size={13}/> Analyze ATS Match</>}
-            </button>
-            {atsError && <p className="text-[10px] text-red-400 bg-red-900/30 rounded-xl p-3">{atsError}</p>}
-            {atsResult && (
-              <div className="space-y-4">
-                <div className={`flex items-center gap-4 ${cardBg} border rounded-2xl p-4`}>
-                  <div className="relative w-16 h-16 shrink-0">
-                    <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                      <circle cx="50" cy="50" r="42" fill="none" stroke={dark ? "#1e293b" : "#f1f5f9"} strokeWidth="12"/>
-                      <circle cx="50" cy="50" r="42" fill="none"
-                        stroke={atsResult.score >= 70 ? "#22c55e" : atsResult.score >= 50 ? "#f59e0b" : "#ef4444"}
-                        strokeWidth="12" strokeDasharray={`${2*Math.PI*42}`}
-                        strokeDashoffset={`${2*Math.PI*42*(1-atsResult.score/100)}`}
-                        strokeLinecap="round"/>
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-xl font-black" style={{color:atsResult.score>=70?"#22c55e":atsResult.score>=50?"#f59e0b":"#ef4444"}}>{atsResult.score}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <p className={`font-black text-sm ${dark ? 'text-slate-100' : 'text-slate-800'}`}>{atsResult.score>=70?"Strong Match":atsResult.score>=50?"Partial Match":"Weak Match"}</p>
-                    <p className={`text-[10px] ${textMuted}`}>{atsResult.score}% match</p>
-                  </div>
-                </div>
-                {atsResult.matched.length > 0 && (
-                  <div className={`${dark ? 'bg-green-900/20 border-green-800' : 'bg-green-50 border-green-100'} border rounded-2xl p-4`}>
-                    <p className={`text-[9px] font-black uppercase ${dark ? 'text-green-400' : 'text-green-700'} mb-2`}>✓ Matched ({atsResult.matched.length})</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {atsResult.matched.map((kw: string, i: number) => (
-                        <span key={i} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${dark ? 'bg-green-800 text-green-300' : 'bg-green-100 text-green-700'}`}>{kw}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {atsResult.missing.length > 0 && (
-                  <div className={`${dark ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-100'} border rounded-2xl p-4`}>
-                    <p className={`text-[9px] font-black uppercase ${dark ? 'text-red-400' : 'text-red-600'} mb-2`}>✗ Missing ({atsResult.missing.length})</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {atsResult.missing.map((kw: string, i: number) => (
-                        <span key={i} className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${dark ? 'bg-red-900 text-red-300' : 'bg-red-100 text-red-600'}`}>{kw}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "grammar" && (() => {
-          const issues = checkGrammar(data);
-          return (
             <div className="space-y-4">
-              {issues.length === 0 ? (
-                <div className={`${dark ? 'bg-green-900/20 border-green-800' : 'bg-green-50 border-green-100'} border rounded-2xl p-6 flex flex-col items-center text-center gap-2`}>
-                  <CheckCircle size={28} className="text-green-500"/>
-                  <p className={`font-black text-sm ${dark ? 'text-green-400' : 'text-green-700'}`}>Looking great!</p>
-                  <p className={`text-[11px] ${dark ? 'text-slate-400' : 'text-slate-500'}`}>No issues detected.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <p className={`text-[10px] font-black uppercase ${textMuted}`}>{issues.length} issue{issues.length !== 1 ? 's' : ''} found</p>
-                  {issues.map((issue, i) => (
-                    <div key={i} className={`border rounded-xl p-3 ${issue.type === 'spelling' ? (dark ? 'bg-red-900/20 border-red-800' : 'bg-red-50 border-red-100') : issue.type === 'style' ? (dark ? 'bg-amber-900/20 border-amber-800' : 'bg-amber-50 border-amber-100') : (dark ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-100')}`}>
-                      <p className={`text-[8px] font-black uppercase mb-1 ${issue.type === 'spelling' ? (dark?'text-red-400':'text-red-500') : issue.type === 'style' ? (dark?'text-amber-400':'text-amber-600') : (dark?'text-blue-400':'text-blue-600')}`}>{issue.field} · {issue.type}</p>
-                      <p className={`text-[11px] mb-1 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>{issue.message}</p>
-                      <div className="flex items-center gap-2">
-                        <span className="line-through text-[10px] text-red-400">"{issue.original}"</span>
-                        <ChevronRight size={10} className="text-slate-400"/>
-                        <span className={`text-[10px] font-bold ${dark ? 'text-green-400' : 'text-green-600'}`}>{issue.suggestion}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {data.education && (
+                <section>
+                  <h2 className="text-[11px] font-black uppercase tracking-widest border-b border-slate-200 pb-1 mb-2" style={{ color: themeColor }}>{labels.education}</h2>
+                  <div className={`${dens.text} text-slate-700`}>{renderText(data.education)}</div>
+                </section>
+              )}
+              {data.certifications && (
+                <section>
+                  <h2 className="text-[11px] font-black uppercase tracking-widest border-b border-slate-200 pb-1 mb-2" style={{ color: themeColor }}>{labels.certifications}</h2>
+                  <div className={`${dens.text} text-slate-700`}>{renderText(data.certifications)}</div>
+                </section>
               )}
             </div>
-          );
-        })()}
-
-        {activeTab === "jobs" && <JobBoardLinks data={data} dark={dark}/>}
-      </div>
-    </div>
-  );
-}
-
-// ─── Resume Renderer ──────────────────────────────────────────────────────────
-function ResumeRenderer({ data, template, themeColor, photo, customSections, showQR, labels: rawLabels }: any) {
-  const labels = rawLabels || { summary:"Professional Summary", experience:"Professional History", achievements:"Achievements", education:"Education", certifications:"Certifications", skills:"Skills" };
-  const CustomSectionsRenderer = () => (
-    <>
-      {(customSections || []).filter((s: any) => s.title || s.content).map((sec: any) => (
-        <section key={sec.id}>
-          <h3 className="text-xs font-black uppercase border-b-2 pb-1 mb-4" style={{borderColor: themeColor}}>{sec.title || "Custom Section"}</h3>
-          <div className="text-[11px] text-slate-700 leading-relaxed">{renderText(sec.content)}</div>
-        </section>
-      ))}
-    </>
-  );
-
-  const qrUrl = data.linkedin ? (data.linkedin.startsWith("http") ? data.linkedin : "https://" + data.linkedin) : `mailto:${data.email}`;
-
-  if (template === 'corporate' || template === 'grid') return (
-    <div id="resume-document" className="w-[210mm] min-h-[297mm] bg-white flex flex-row text-slate-900">
-      <div className="p-16 space-y-8 flex-1">
-        <div className="text-center space-y-4 border-b pb-8">
-          {photo && <img src={photo} className="w-28 h-28 rounded-full mx-auto border-4 border-slate-100 object-cover" alt="Profile"/>}
-          <h1 className="text-5xl font-black uppercase tracking-tighter leading-none">{data.name}</h1>
-          <p className="font-bold uppercase tracking-widest" style={{color:themeColor}}>{data.role}</p>
-          <div className="flex justify-center gap-6 text-[10px] font-bold text-slate-400">
-            <span className="flex items-center gap-1"><Mail size={10}/> {data.email}</span>
-            <span className="flex items-center gap-1"><Phone size={10}/> {data.phone}</span>
-            <span className="flex items-center gap-1"><Globe size={10}/> {data.linkedin}</span>
-            <span className="flex items-center gap-1"><MapPin size={10}/> {data.location}</span>
           </div>
-          {showQR && (data.linkedin||data.email) && <div className="flex justify-center"><div className="bg-slate-50 p-2 rounded-xl inline-block"><QRCodeSVG value={qrUrl} size={56} color={themeColor}/></div></div>}
-        </div>
-        <div className={template === 'grid' ? 'grid grid-cols-2 gap-10' : 'space-y-8'}>
-          <section><h3 className="text-xs font-black uppercase border-b-2 pb-1 mb-4" style={{borderColor:themeColor}}>{labels.summary}</h3><p className="text-[11px] text-slate-600 leading-relaxed italic">{renderText(data.summary)}</p></section>
-          <section><h3 className="text-xs font-black uppercase border-b-2 pb-1 mb-4" style={{borderColor:themeColor}}>{labels.experience}</h3><div className="text-[11px] text-slate-700 leading-relaxed">{renderText(data.experience)}</div></section>
-          <section><h3 className="text-xs font-black uppercase border-b-2 pb-1 mb-4" style={{borderColor:themeColor}}>{labels.skills}</h3><div className="flex flex-wrap gap-1.5">{(data.skills||"").split(',').map((s:string,i:number)=>s.trim()&&<span key={i} className="text-[9px] font-bold px-2 py-0.5 rounded-full border" style={{borderColor:themeColor,color:themeColor}}>{s.trim()}</span>)}</div></section>
-          <section><h3 className="text-xs font-black uppercase border-b-2 pb-1 mb-4" style={{borderColor:themeColor}}>{labels.education}</h3><div className="text-[11px] text-slate-700">{renderText(data.education)}</div></section>
-          <section><h3 className="text-xs font-black uppercase border-b-2 pb-1 mb-4" style={{borderColor:themeColor}}>{labels.achievements}</h3><div className="text-[11px] text-slate-700 font-bold">{renderText(data.achievements)}</div></section>
-          <section><h3 className="text-xs font-black uppercase border-b-2 pb-1 mb-4" style={{borderColor:themeColor}}>{labels.certifications}</h3><div className="text-[11px] text-slate-700">{renderText(data.certifications)}</div></section>
-          <CustomSectionsRenderer/>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (template === 'split') return (
-    <div id="resume-document" className="w-[210mm] min-h-[297mm] bg-white flex flex-col text-slate-900">
-      <div className="p-16 text-white flex justify-between items-center print-bg" style={{backgroundColor:themeColor}}>
-        <div><h1 className="text-6xl font-black uppercase tracking-tighter leading-none text-white">{data.name}</h1><p className="text-2xl font-bold opacity-90 text-white mt-4 uppercase tracking-widest">{data.role}</p></div>
-        {photo && <img src={photo} className="w-40 h-40 rounded-full border-8 border-white/20 object-cover shadow-2xl" alt="Profile"/>}
-      </div>
-      <div className="flex-1 flex p-16 gap-16 bg-white">
-        <div className="flex-1 space-y-12">
-          <section><h2 className="text-xs font-black uppercase mb-6 tracking-[0.2em]" style={{color:themeColor}}>Professional Summary</h2><p className="text-[11px] text-slate-600 leading-relaxed italic">{renderText(data.summary)}</p></section>
-          <section><h2 className="text-xs font-black uppercase mb-6 tracking-[0.2em]" style={{color:themeColor}}>Experience</h2><div className="text-[11px] text-slate-700 leading-relaxed border-l-2 pl-6">{renderText(data.experience)}</div></section>
-          <section><h2 className="text-xs font-black uppercase mb-6 tracking-[0.2em]" style={{color:themeColor}}>Achievements</h2><div className="text-[11px] text-slate-800 font-bold bg-slate-50 p-6 rounded-xl italic">{renderText(data.achievements)}</div></section>
-          {(customSections||[]).filter((s:any)=>s.title||s.content).map((sec:any)=>(
-            <section key={sec.id}><h2 className="text-xs font-black uppercase mb-4" style={{color:themeColor}}>{sec.title}</h2><div className="text-[11px] text-slate-700">{renderText(sec.content)}</div></section>
-          ))}
-        </div>
-        <div className="w-1/3 space-y-10">
-          <section className="space-y-4 text-[11px] font-bold text-slate-600">
-            <p className="flex items-center gap-3"><Mail size={14} style={{color:themeColor}}/> {data.email}</p>
-            <p className="flex items-center gap-3"><Phone size={14} style={{color:themeColor}}/> {data.phone}</p>
-            <p className="flex items-center gap-3 uppercase"><MapPin size={14} style={{color:themeColor}}/> {data.location}</p>
-          </section>
-          {showQR && (data.linkedin||data.email) && <div><QRCodeSVG value={qrUrl} size={64} color={themeColor}/></div>}
-          <section><h3 className="text-[10px] font-black uppercase mb-4 text-slate-400">{labels.education}</h3><div className="text-[10px] text-slate-600">{renderText(data.education)}</div></section>
-          <section><h3 className="text-[10px] font-black uppercase mb-3 text-slate-400">{labels.skills}</h3><div className="flex flex-wrap gap-1">{(data.skills||"").split(',').map((s:string,i:number)=>s.trim()&&<span key={i} className="text-[8px] font-bold px-1.5 py-0.5 rounded-md" style={{backgroundColor:`${themeColor}15`,color:themeColor}}>{s.trim()}</span>)}</div></section>
-          <section><h3 className="text-[10px] font-black uppercase mb-4 text-slate-400">{labels.certifications}</h3><div className="text-[10px] text-slate-600">{renderText(data.certifications)}</div></section>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (template === 'brandon') return (
-    <div id="resume-document" className="w-[210mm] min-h-[297mm] bg-slate-100 flex p-8 gap-8 text-slate-900">
-      <div className="w-[300px] rounded-[32px] p-10 text-white flex flex-col space-y-8 print-bg shadow-2xl" style={{backgroundColor:themeColor}}>
-        {photo && <img src={photo} className="w-32 h-32 rounded-3xl mx-auto border-4 border-white/20 object-cover" alt="Profile"/>}
-        <section className="space-y-4"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-2 tracking-[0.2em] text-white">Contact</h3><div className="text-[10px] space-y-3 text-white"><p className="flex items-center gap-3"><Mail size={12}/> {data.email}</p><p className="flex items-center gap-3"><Phone size={12}/> {data.phone}</p><p className="flex items-center gap-3 uppercase"><MapPin size={12}/> {data.location}</p></div></section>
-        <section className="space-y-4"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-2 tracking-[0.2em] text-white">{labels.education}</h3><p className="text-[10px] leading-relaxed font-medium text-white">{renderText(data.education)}</p></section>
-        <section className="space-y-3"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-2 tracking-[0.2em] text-white">{labels.skills}</h3><div className="flex flex-wrap gap-1.5">{(data.skills||"").split(',').map((s:string,i:number)=>s.trim()&&<span key={i} className="text-[8px] font-bold px-2 py-0.5 rounded-full bg-white/20 text-white">{s.trim()}</span>)}</div></section>
-        {showQR && (data.linkedin||data.email) && <div className="flex flex-col items-center gap-1"><div className="bg-white p-1.5 rounded-lg"><QRCodeSVG value={qrUrl} size={56} color={themeColor}/></div></div>}
-      </div>
-      <div className="flex-1 bg-white rounded-[32px] p-12 shadow-sm border border-slate-200">
-        <div className="mb-10"><h1 className="text-5xl font-black uppercase tracking-tighter text-slate-900 leading-none">{data.name}</h1><p className="text-sm font-bold uppercase tracking-[0.5em] mt-4" style={{color:themeColor}}>{data.role}</p></div>
-        <div className="space-y-10">
-          <section><h2 className="text-[10px] font-black uppercase text-slate-300 tracking-[0.3em] mb-4">{labels.summary}</h2><p className="text-[11px] text-slate-600 leading-relaxed italic">{renderText(data.summary)}</p></section>
-          <section><h2 className="text-[10px] font-black uppercase text-slate-300 tracking-[0.3em] mb-4">{labels.experience}</h2><div className="text-[11px] text-slate-700 leading-loose font-medium">{renderText(data.experience)}</div></section>
-          <section className="bg-slate-50 p-6 rounded-2xl border-l-4" style={{borderColor:themeColor}}><h2 className="text-[10px] font-black uppercase mb-2" style={{color:themeColor}}>{labels.achievements}</h2><div className="text-[11px] text-slate-700 font-bold">{renderText(data.achievements)}</div><div className="text-[10px] text-slate-500 mt-2">{renderText(data.certifications)}</div></section>
-          {(customSections||[]).filter((s:any)=>s.title||s.content).map((sec:any)=>(
-            <section key={sec.id}><h2 className="text-[10px] font-black uppercase text-slate-300 tracking-[0.3em] mb-4">{sec.title}</h2><div className="text-[11px] text-slate-700">{renderText(sec.content)}</div></section>
+          {validCustom.map(sec => (
+            <section key={sec.id}>
+              <h2 className="text-[11px] font-black uppercase tracking-widest border-b border-slate-200 pb-1 mb-2" style={{ color: themeColor }}>{sec.title || "Additional"}</h2>
+              <div className={`${dens.text} text-slate-700 leading-relaxed`}>{renderText(sec.content)}</div>
+            </section>
           ))}
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  if (template === 'lauren') return (
-    <div id="resume-document" className="w-[210mm] min-h-[297mm] bg-white p-20 flex flex-col font-serif text-center text-slate-900">
-      <div className="mb-12"><h1 className="text-5xl font-light tracking-widest uppercase mb-4 text-slate-800">{data.name}</h1><p className="text-xs tracking-[0.4em] uppercase opacity-60 mb-6">{data.role}</p><div className="flex justify-center gap-8 text-[9px] uppercase tracking-widest text-slate-400 border-y py-3 border-slate-100"><span>{data.email}</span><span>{data.phone}</span><span>{data.location}</span></div></div>
-      <div className="max-w-3xl mx-auto space-y-12 text-left">
-        <section className="text-center px-10"><p className="text-[12px] italic text-slate-600 leading-relaxed">{renderText(data.summary)}</p></section>
-        <section><h2 className="text-center text-[10px] font-bold uppercase tracking-[0.3em] mb-4" style={{color:themeColor}}>{labels.experience}</h2><div className="text-[11px] text-slate-700 leading-loose">{renderText(data.experience)}</div></section>
-        <section><h2 className="text-center text-[10px] font-bold uppercase tracking-[0.3em] mb-4" style={{color:themeColor}}>Education & Certifications</h2><div className="text-[11px] text-slate-700 text-center space-y-2"><p className="font-bold">{renderText(data.education)}</p><p className="italic opacity-70">{renderText(data.certifications)}</p></div></section>
-        <section><h2 className="text-center text-[10px] font-bold uppercase tracking-[0.3em] mb-4" style={{color:themeColor}}>{labels.skills}</h2><div className="flex flex-wrap justify-center gap-2">{(data.skills||"").split(',').map((s:string,i:number)=>s.trim()&&<span key={i} className="text-[9px] font-bold px-2.5 py-1 rounded-full border border-slate-200 text-slate-500">{s.trim()}</span>)}</div></section>
-        <section><h2 className="text-center text-[10px] font-bold uppercase tracking-[0.3em] mb-4" style={{color:themeColor}}>{labels.achievements}</h2><div className="text-[11px] text-slate-700 text-center italic">{renderText(data.achievements)}</div></section>
-        {(customSections||[]).filter((s:any)=>s.title||s.content).map((sec:any)=>(
-          <section key={sec.id}><h2 className="text-center text-[10px] font-bold uppercase tracking-[0.3em] mb-4" style={{color:themeColor}}>{sec.title}</h2><div className="text-[11px] text-slate-700 text-left">{renderText(sec.content)}</div></section>
-        ))}
-        {showQR && (data.linkedin||data.email) && <div className="flex justify-center flex-col items-center gap-2 pt-4"><QRCodeSVG value={qrUrl} size={60}/></div>}
-      </div>
-    </div>
-  );
-
-  if (template === 'minimal') return (
-    <div id="resume-document" className="w-[210mm] min-h-[297mm] bg-white p-16 text-slate-900">
-      <div className="flex justify-between items-start mb-16 border-b pb-10">
-        <div className="space-y-2"><h1 className="text-4xl font-light tracking-tight text-slate-900 uppercase">{data.name}</h1><p className="text-sm font-medium opacity-50 tracking-widest uppercase">{data.role}</p></div>
-        <div className="flex flex-col items-end gap-2">
-          <div className="text-[10px] space-y-1 text-right text-slate-500 font-bold uppercase tracking-tighter"><p>{data.email} | {data.phone}</p><p>{data.location}</p></div>
-          {showQR && (data.linkedin||data.email) && <QRCodeSVG value={qrUrl} size={48}/>}
+  if (template === "corporate" || template === "grid") {
+    return (
+      <div id="resume-document" style={wrapperStyle} className={`w-[210mm] min-h-[297mm] bg-white text-slate-900 ${dens.pad}`}>
+        <div className="text-center border-b pb-6 mb-7 space-y-2.5">
+          {activePhoto && <img src={activePhoto} alt={data.name} className="w-24 h-24 rounded-full mx-auto object-cover border-4 border-slate-100 shadow-sm" />}
+          <h1 className="text-4xl font-black uppercase tracking-tight">{data.name}</h1>
+          <p className="text-xs font-bold uppercase tracking-[0.25em]" style={{ color: themeColor }}>{data.role}</p>
+          <div className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-[10px] text-slate-500 font-medium pt-1">
+            {data.email && <span className="flex items-center gap-1"><Mail size={10} />{data.email}</span>}
+            {data.phone && <span className="flex items-center gap-1"><Phone size={10} />{data.phone}</span>}
+            {data.location && <span className="flex items-center gap-1"><MapPin size={10} />{data.location}</span>}
+            {data.linkedin && <span className="flex items-center gap-1"><Globe size={10} />{data.linkedin}</span>}
+          </div>
+          {showQR && <div className="flex justify-center pt-1"><QRCodeSVG value={qrUrl} size={52} color={themeColor} /></div>}
         </div>
-      </div>
-      <div className="space-y-12">
-        <div className="grid grid-cols-4 gap-8"><span className="text-[10px] font-black uppercase tracking-widest opacity-30">{labels.summary}</span><div className="col-span-3 text-[11px] text-slate-600 pl-8 italic leading-relaxed">{renderText(data.summary)}</div></div>
-        <div className="grid grid-cols-4 gap-8"><span className="text-[10px] font-black uppercase tracking-widest opacity-30">{labels.experience}</span><div className="col-span-3 text-[11px] text-slate-700 leading-relaxed border-l pl-8">{renderText(data.experience)}</div></div>
-        <div className="grid grid-cols-4 gap-8"><span className="text-[10px] font-black uppercase tracking-widest opacity-30">{labels.skills}</span><div className="col-span-3 pl-8 flex flex-wrap gap-1.5">{(data.skills||"").split(',').map((s:string,i:number)=>s.trim()&&<span key={i} className="text-[9px] font-black px-2 py-0.5 bg-slate-100 text-slate-600 rounded">{s.trim()}</span>)}</div></div>
-        <div className="grid grid-cols-4 gap-8"><span className="text-[10px] font-black uppercase tracking-widest opacity-30">{labels.education}</span><div className="col-span-3 text-[11px] text-slate-700 pl-8">{renderText(data.education)}</div></div>
-        <div className="grid grid-cols-4 gap-8"><span className="text-[10px] font-black uppercase tracking-widest opacity-30">{labels.achievements}</span><div className="col-span-3 text-[11px] font-bold pl-8" style={{color:themeColor}}>{renderText(data.achievements)}</div></div>
-        {(customSections||[]).filter((s:any)=>s.title||s.content).map((sec:any)=>(
-          <div key={sec.id} className="grid grid-cols-4 gap-8"><span className="text-[10px] font-black uppercase tracking-widest opacity-30">{sec.title||"Custom"}</span><div className="col-span-3 text-[11px] text-slate-700 pl-8">{renderText(sec.content)}</div></div>
-        ))}
-      </div>
-    </div>
-  );
-
-  if (template === 'creative') return (
-    <div id="resume-document" className="w-[210mm] min-h-[297mm] bg-white flex flex-col text-slate-900">
-      <div className="p-12 text-white flex items-center gap-8 print-bg" style={{backgroundColor:themeColor}}>
-        {photo && <img src={photo} className="w-32 h-32 rounded-full border-4 border-white/20 object-cover shadow-xl" alt="Profile"/>}
-        <div><h1 className="text-5xl font-black uppercase tracking-tighter leading-none text-white">{data.name}</h1><p className="text-xl font-bold opacity-90 text-white mt-2">{data.role}</p></div>
-      </div>
-      <div className="flex-1 flex p-12 gap-12 bg-white">
-        <div className="flex-1 space-y-10">
-          <section><h2 className="text-sm font-black uppercase mb-4 flex items-center gap-2" style={{color:themeColor}}><UserIcon size={14}/> Professional Summary</h2><p className="text-[11px] text-slate-600 leading-relaxed italic">{renderText(data.summary)}</p></section>
-          <section><h2 className="text-sm font-black uppercase mb-4 flex items-center gap-2" style={{color:themeColor}}><Star size={14}/> Experience</h2><div className="text-[11px] text-slate-700 leading-relaxed">{renderText(data.experience)}</div></section>
-          <section><h2 className="text-sm font-black uppercase mb-4 flex items-center gap-2" style={{color:themeColor}}><Trophy size={14}/> Key Achievements</h2><div className="text-[11px] text-slate-800 font-bold bg-slate-50 p-4 rounded-lg">{renderText(data.achievements)}</div></section>
-          {(customSections||[]).filter((s:any)=>s.title||s.content).map((sec:any)=>(
-            <section key={sec.id}><h2 className="text-sm font-black uppercase mb-4 flex items-center gap-2" style={{color:themeColor}}><Sparkles size={14}/> {sec.title}</h2><div className="text-[11px] text-slate-700">{renderText(sec.content)}</div></section>
+        <div className={template === "grid" ? "grid grid-cols-2 gap-8" : dens.gap}>
+          <section><h3 className="text-[11px] font-black uppercase border-b-2 pb-1 mb-3" style={{ borderColor: themeColor }}>{labels.summary}</h3><div className={`${dens.text} text-slate-600 leading-relaxed`}>{renderText(data.summary)}</div></section>
+          <section><h3 className="text-[11px] font-black uppercase border-b-2 pb-1 mb-3" style={{ borderColor: themeColor }}>{labels.experience}</h3><div className={`${dens.text} text-slate-800 leading-relaxed`}>{renderText(data.experience)}</div></section>
+          <section><h3 className="text-[11px] font-black uppercase border-b-2 pb-1 mb-3" style={{ borderColor: themeColor }}>{labels.skills}</h3><div className="flex flex-wrap gap-1.5">{skillList.map((s, i) => <span key={i} className="text-[9.5px] font-semibold px-2.5 py-0.5 rounded-full border" style={{ borderColor: `${themeColor}50`, color: themeColor }}>{s}</span>)}</div></section>
+          <section><h3 className="text-[11px] font-black uppercase border-b-2 pb-1 mb-3" style={{ borderColor: themeColor }}>{labels.education}</h3><div className={`${dens.text} text-slate-700`}>{renderText(data.education)}</div></section>
+          <section><h3 className="text-[11px] font-black uppercase border-b-2 pb-1 mb-3" style={{ borderColor: themeColor }}>{labels.achievements}</h3><div className={`${dens.text} text-slate-800 font-medium`}>{renderText(data.achievements)}</div></section>
+          <section><h3 className="text-[11px] font-black uppercase border-b-2 pb-1 mb-3" style={{ borderColor: themeColor }}>{labels.certifications}</h3><div className={`${dens.text} text-slate-700`}>{renderText(data.certifications)}</div></section>
+          {validCustom.map(sec => (
+            <section key={sec.id}><h3 className="text-[11px] font-black uppercase border-b-2 pb-1 mb-3" style={{ borderColor: themeColor }}>{sec.title}</h3><div className={`${dens.text} text-slate-700`}>{renderText(sec.content)}</div></section>
           ))}
         </div>
-        <div className="w-1/3 space-y-8 border-l pl-10 border-slate-100">
-          <section className="space-y-2 text-[10px] font-medium"><p className="flex items-center gap-2 text-slate-600"><Mail size={12} style={{color:themeColor}}/> {data.email}</p><p className="flex items-center gap-2 text-slate-600"><Phone size={12} style={{color:themeColor}}/> {data.phone}</p></section>
-          {showQR && (data.linkedin||data.email) && <QRCodeSVG value={qrUrl} size={60} color={themeColor}/>}
-          <section><h3 className="text-xs font-black uppercase mb-2">{labels.skills}</h3><div className="flex flex-wrap gap-1">{(data.skills||"").split(',').map((s:string,i:number)=>s.trim()&&<span key={i} className="text-[8px] font-bold px-1.5 py-0.5 rounded-md" style={{backgroundColor:`${themeColor}18`,color:themeColor}}>{s.trim()}</span>)}</div></section>
-          <section><h3 className="text-xs font-black uppercase mb-2">{labels.education}</h3><div className="text-[10px] text-slate-600 italic">{renderText(data.education)}</div></section>
-          <section><h3 className="text-xs font-black uppercase mb-2">{labels.certifications}</h3><div className="text-[10px] text-slate-600">{renderText(data.certifications)}</div></section>
+      </div>
+    );
+  }
+
+  if (template === "split" || template === "creative") {
+    return (
+      <div id="resume-document" style={wrapperStyle} className="w-[210mm] min-h-[297mm] bg-white flex flex-col text-slate-900">
+        <div className="px-14 py-11 text-white flex items-center justify-between gap-6" style={{ backgroundColor: themeColor }}>
+          <div>
+            <h1 className="text-4xl font-black uppercase tracking-tight leading-none text-white">{data.name}</h1>
+            <p className="text-base font-semibold text-white/85 mt-2 tracking-wide">{data.role}</p>
+            <div className="flex flex-wrap gap-4 text-[10px] text-white/80 mt-4">
+              {data.email && <span className="flex items-center gap-1.5"><Mail size={11} />{data.email}</span>}
+              {data.phone && <span className="flex items-center gap-1.5"><Phone size={11} />{data.phone}</span>}
+              {data.location && <span className="flex items-center gap-1.5"><MapPin size={11} />{data.location}</span>}
+            </div>
+          </div>
+          {activePhoto && <img src={activePhoto} alt={data.name} className="w-28 h-28 rounded-2xl border-4 border-white/25 object-cover shadow-xl shrink-0" />}
+        </div>
+        <div className="flex-1 flex px-14 py-10 gap-10 bg-white">
+          <div className={`flex-1 ${dens.gap}`}>
+            <section>
+              <h2 className="text-[11px] font-black uppercase tracking-widest mb-2.5 flex items-center gap-2" style={{ color: themeColor }}>
+                {template === "creative" && <UserIcon size={13} />} {labels.summary}
+              </h2>
+              <div className={`${dens.text} text-slate-600 leading-relaxed`}>{renderText(data.summary)}</div>
+            </section>
+            <section>
+              <h2 className="text-[11px] font-black uppercase tracking-widest mb-2.5 flex items-center gap-2" style={{ color: themeColor }}>
+                {template === "creative" && <Star size={13} />} {labels.experience}
+              </h2>
+              <div className={`${dens.text} text-slate-800 leading-relaxed border-l-2 border-slate-100 pl-4`}>{renderText(data.experience)}</div>
+            </section>
+            <section>
+              <h2 className="text-[11px] font-black uppercase tracking-widest mb-2.5 flex items-center gap-2" style={{ color: themeColor }}>
+                {template === "creative" && <Trophy size={13} />} {labels.achievements}
+              </h2>
+              <div className={`${dens.text} text-slate-800 bg-slate-50 p-4 rounded-xl leading-relaxed`}>{renderText(data.achievements)}</div>
+            </section>
+            {validCustom.map(sec => (
+              <section key={sec.id}>
+                <h2 className="text-[11px] font-black uppercase tracking-widest mb-2" style={{ color: themeColor }}>{sec.title}</h2>
+                <div className={`${dens.text} text-slate-700 leading-relaxed`}>{renderText(sec.content)}</div>
+              </section>
+            ))}
+          </div>
+          <div className="w-[62mm] space-y-6 border-l border-slate-100 pl-8 shrink-0">
+            {data.linkedin && (
+              <section>
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Links</h3>
+                <p className="text-[10px] text-slate-700 break-all">{data.linkedin}</p>
+                {data.website && <p className="text-[10px] text-slate-700 break-all mt-1">{data.website}</p>}
+              </section>
+            )}
+            <section>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">{labels.skills}</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {skillList.map((s, i) => <span key={i} className="text-[9px] font-bold px-2 py-0.5 rounded-md" style={{ backgroundColor: `${themeColor}14`, color: themeColor }}>{s}</span>)}
+              </div>
+            </section>
+            <section>
+              <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">{labels.education}</h3>
+              <div className="text-[10.5px] text-slate-700 leading-relaxed">{renderText(data.education)}</div>
+            </section>
+            {data.certifications && (
+              <section>
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">{labels.certifications}</h3>
+                <div className="text-[10.5px] text-slate-700 leading-relaxed">{renderText(data.certifications)}</div>
+              </section>
+            )}
+            {data.languages && (
+              <section>
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Languages</h3>
+                <p className="text-[10.5px] text-slate-700">{data.languages}</p>
+              </section>
+            )}
+            {showQR && <div className="pt-2"><QRCodeSVG value={qrUrl} size={62} color={themeColor} /></div>}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  // richard (default)
+  if (template === "lauren") {
+    return (
+      <div id="resume-document" style={{ fontFamily: "Georgia, Cambria, serif" }} className={`w-[210mm] min-h-[297mm] bg-white text-slate-900 ${dens.pad}`}>
+        <div className="text-center mb-8">
+          {activePhoto && <img src={activePhoto} alt={data.name} className="w-24 h-24 rounded-full mx-auto mb-4 object-cover border-2 border-slate-200" />}
+          <h1 className="text-4xl font-normal tracking-[0.15em] uppercase text-slate-900">{data.name}</h1>
+          <p className="text-xs tracking-[0.35em] uppercase mt-2" style={{ color: themeColor }}>{data.role}</p>
+          <div className="flex flex-wrap justify-center gap-6 text-[10px] text-slate-500 border-y border-slate-200 py-2.5 mt-4">
+            <span>{data.email}</span><span>{data.phone}</span><span>{data.location}</span>{data.linkedin && <span>{data.linkedin}</span>}
+          </div>
+        </div>
+        <div className={`max-w-3xl mx-auto ${dens.gap}`}>
+          <section className="text-center px-6"><div className={`${dens.text} italic text-slate-600 leading-relaxed`}>{renderText(data.summary)}</div></section>
+          <section><h2 className="text-center text-[11px] font-bold uppercase tracking-[0.25em] mb-3" style={{ color: themeColor }}>{labels.experience}</h2><div className={`${dens.text} text-slate-800 leading-relaxed`}>{renderText(data.experience)}</div></section>
+          <section><h2 className="text-center text-[11px] font-bold uppercase tracking-[0.25em] mb-3" style={{ color: themeColor }}>{labels.achievements}</h2><div className={`${dens.text} text-slate-700 leading-relaxed`}>{renderText(data.achievements)}</div></section>
+          <div className="grid grid-cols-2 gap-8 pt-2 border-t border-slate-100">
+            <section><h2 className="text-[10px] font-bold uppercase tracking-[0.25em] mb-2" style={{ color: themeColor }}>{labels.education}</h2><div className={`${dens.text} text-slate-700`}>{renderText(data.education)}</div>{data.certifications && <div className="text-[10px] text-slate-500 mt-2 italic">{renderText(data.certifications)}</div>}</section>
+            <section><h2 className="text-[10px] font-bold uppercase tracking-[0.25em] mb-2" style={{ color: themeColor }}>{labels.skills}</h2><p className={`${dens.text} text-slate-700 leading-relaxed`}>{skillList.join(" · ")}</p></section>
+          </div>
+          {validCustom.map(sec => (
+            <section key={sec.id}><h2 className="text-center text-[11px] font-bold uppercase tracking-[0.25em] mb-2" style={{ color: themeColor }}>{sec.title}</h2><div className={`${dens.text} text-slate-700`}>{renderText(sec.content)}</div></section>
+          ))}
+          {showQR && <div className="flex justify-center pt-2"><QRCodeSVG value={qrUrl} size={56} color={themeColor} /></div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (template === "brandon") {
+    return (
+      <div id="resume-document" style={wrapperStyle} className="w-[210mm] min-h-[297mm] bg-slate-100 flex p-7 gap-6 text-slate-900">
+        <div className="w-[68mm] rounded-3xl p-8 text-white flex flex-col gap-6 shrink-0" style={{ backgroundColor: themeColor }}>
+          {activePhoto && <img src={activePhoto} alt={data.name} className="w-28 h-28 rounded-2xl mx-auto border-4 border-white/20 object-cover" />}
+          <section className="space-y-2.5"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1.5 tracking-widest">Contact</h3><div className="text-[10px] space-y-2 text-white/90"><p className="flex items-center gap-2 break-all"><Mail size={11} />{data.email}</p><p className="flex items-center gap-2"><Phone size={11} />{data.phone}</p><p className="flex items-center gap-2"><MapPin size={11} />{data.location}</p>{data.linkedin && <p className="flex items-center gap-2 break-all"><Globe size={11} />{data.linkedin}</p>}</div></section>
+          <section className="space-y-2"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1.5 tracking-widest">{labels.education}</h3><div className="text-[10px] leading-relaxed text-white/90">{renderText(data.education)}</div></section>
+          <section className="space-y-2"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1.5 tracking-widest">{labels.skills}</h3><div className="flex flex-wrap gap-1.5">{skillList.map((s, i) => <span key={i} className="text-[8.5px] font-semibold px-2 py-0.5 rounded-full bg-white/15 text-white">{s}</span>)}</div></section>
+          {data.certifications && <section className="space-y-2"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1.5 tracking-widest">{labels.certifications}</h3><div className="text-[10px] text-white/90">{renderText(data.certifications)}</div></section>}
+          {showQR && <div className="mt-auto pt-3 flex justify-center"><div className="bg-white p-1.5 rounded-lg"><QRCodeSVG value={qrUrl} size={56} color={themeColor} /></div></div>}
+        </div>
+        <div className="flex-1 bg-white rounded-3xl p-10 border border-slate-200">
+          <div className="mb-7"><h1 className="text-4xl font-black uppercase tracking-tight text-slate-900 leading-none">{data.name}</h1><p className="text-xs font-bold uppercase tracking-[0.3em] mt-3" style={{ color: themeColor }}>{data.role}</p></div>
+          <div className={dens.gap}>
+            <section><h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">{labels.summary}</h2><div className={`${dens.text} text-slate-600 leading-relaxed`}>{renderText(data.summary)}</div></section>
+            <section><h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">{labels.experience}</h2><div className={`${dens.text} text-slate-800 leading-relaxed`}>{renderText(data.experience)}</div></section>
+            <section className="bg-slate-50 p-5 rounded-2xl border-l-4" style={{ borderColor: themeColor }}><h2 className="text-[10px] font-black uppercase mb-2" style={{ color: themeColor }}>{labels.achievements}</h2><div className={`${dens.text} text-slate-800 font-medium`}>{renderText(data.achievements)}</div></section>
+            {validCustom.map(sec => <section key={sec.id}><h2 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">{sec.title}</h2><div className={`${dens.text} text-slate-700`}>{renderText(sec.content)}</div></section>)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Default: richard (Executive Sidebar)
   return (
-    <div id="resume-document" className="w-[210mm] min-h-[297mm] bg-white flex text-slate-900">
-      <div className="w-[73.5mm] min-w-[73.5mm] p-10 text-white space-y-8 print-bg" style={{backgroundColor:themeColor}}>
-        {photo && <div className="w-32 h-32 rounded-full border-4 border-white/10 mx-auto overflow-hidden shadow-2xl"><img src={photo} className="w-full h-full object-cover" alt="Profile"/></div>}
-        <section className="space-y-4"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1 tracking-[0.2em] opacity-80 text-white">Contact</h3><div className="text-[10px] space-y-3 opacity-90 text-white"><p className="flex items-center gap-3 break-all"><Mail size={12}/> {data.email}</p><p className="flex items-center gap-3"><Phone size={12}/> {data.phone}</p><p className="flex items-center gap-3 truncate uppercase tracking-tighter"><Globe size={12}/> {data.linkedin}</p><p className="flex items-center gap-3 uppercase tracking-tighter"><MapPin size={12}/> {data.location}</p></div></section>
-        <section className="space-y-4"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1 tracking-[0.2em] opacity-80 text-white">{labels.education}</h3><p className="text-[10px] leading-relaxed font-medium text-white">{renderText(data.education)}</p></section>
-        <section className="space-y-4"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1 tracking-[0.2em] opacity-80 text-white">{labels.skills}</h3><div className="flex flex-wrap gap-1.5">{(data.skills||"").split(',').map((s:string,i:number)=>s.trim()&&<span key={i} className="text-[8px] font-bold px-2 py-0.5 rounded-full bg-white/20 text-white">{s.trim()}</span>)}</div></section>
-        <section className="space-y-4"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1 tracking-[0.2em] opacity-80 text-white">{labels.certifications}</h3><p className="text-[10px] leading-relaxed font-medium text-white">{renderText(data.certifications)}</p></section>
-        {showQR && (data.linkedin||data.email) && (
-          <div className="pt-4 border-t border-white/20 flex flex-col items-center gap-2">
-            <p className="text-[8px] font-black uppercase tracking-widest text-white/50">Scan to Connect</p>
-            <div className="bg-white p-1.5 rounded-lg"><QRCodeSVG value={qrUrl} size={60} color={themeColor}/></div>
-          </div>
-        )}
+    <div id="resume-document" style={wrapperStyle} className="w-[210mm] min-h-[297mm] bg-white flex text-slate-900">
+      <div className="w-[70mm] min-w-[70mm] p-9 text-white space-y-7 shrink-0" style={{ backgroundColor: themeColor }}>
+        {activePhoto && <div className="w-28 h-28 rounded-full border-4 border-white/20 mx-auto overflow-hidden shadow-lg"><img src={activePhoto} className="w-full h-full object-cover" alt={data.name} /></div>}
+        <section className="space-y-3"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1.5 tracking-[0.2em] text-white/80">Contact</h3><div className="text-[10px] space-y-2.5 text-white/95"><p className="flex items-center gap-2.5 break-all"><Mail size={11} />{data.email}</p><p className="flex items-center gap-2.5"><Phone size={11} />{data.phone}</p><p className="flex items-center gap-2.5"><MapPin size={11} />{data.location}</p>{data.linkedin && <p className="flex items-center gap-2.5 break-all"><Globe size={11} />{data.linkedin}</p>}{data.website && <p className="flex items-center gap-2.5 break-all"><ExternalLink size={11} />{data.website}</p>}</div></section>
+        <section className="space-y-2.5"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1.5 tracking-[0.2em] text-white/80">{labels.education}</h3><div className="text-[10px] leading-relaxed text-white/90">{renderText(data.education)}</div></section>
+        <section className="space-y-2.5"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1.5 tracking-[0.2em] text-white/80">{labels.skills}</h3><div className="flex flex-wrap gap-1.5">{skillList.map((s, i) => <span key={i} className="text-[8.5px] font-semibold px-2 py-0.5 rounded-full bg-white/15 text-white">{s}</span>)}</div></section>
+        {data.certifications && <section className="space-y-2.5"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1.5 tracking-[0.2em] text-white/80">{labels.certifications}</h3><div className="text-[10px] leading-relaxed text-white/90">{renderText(data.certifications)}</div></section>}
+        {data.languages && <section className="space-y-2"><h3 className="text-[10px] font-black uppercase border-b border-white/20 pb-1.5 tracking-[0.2em] text-white/80">Languages</h3><p className="text-[10px] text-white/90">{data.languages}</p></section>}
+        {showQR && <div className="pt-3 border-t border-white/20 flex flex-col items-center gap-1.5"><span className="text-[8px] uppercase tracking-widest text-white/60">Digital Profile</span><div className="bg-white p-1.5 rounded-lg"><QRCodeSVG value={qrUrl} size={58} color={themeColor} /></div></div>}
       </div>
-      <div className="flex-1 p-16 bg-white">
-        <div className="mb-12"><h1 className="text-6xl font-black uppercase tracking-tighter text-slate-900 leading-none">{data.name}</h1><p className="text-sm font-bold uppercase tracking-[0.5em] mt-6" style={{color:themeColor}}>{data.role}</p></div>
-        <div className="space-y-12">
-          <section><h2 className="text-[10px] font-black uppercase text-slate-300 tracking-[0.3em] border-b pb-2 mb-4">{labels.summary}</h2><p className="text-[11px] text-slate-600 leading-relaxed italic">{renderText(data.summary)}</p></section>
-          <section><h2 className="text-[10px] font-black uppercase text-slate-300 tracking-[0.3em] border-b pb-2 mb-4">{labels.achievements}</h2><div className="text-[11px] text-slate-700 font-bold" style={{color:themeColor}}>{renderText(data.achievements)}</div></section>
-          <section><h2 className="text-[10px] font-black uppercase text-slate-300 tracking-[0.3em] border-b pb-2 mb-4">{labels.experience}</h2><div className="text-[11px] text-slate-700 leading-loose font-medium">{renderText(data.experience)}</div></section>
-          {(customSections||[]).filter((s:any)=>s.title||s.content).map((sec:any)=>(
-            <section key={sec.id}><h2 className="text-[10px] font-black uppercase text-slate-300 tracking-[0.3em] border-b pb-2 mb-4">{sec.title||"Custom Section"}</h2><div className="text-[11px] text-slate-700">{renderText(sec.content)}</div></section>
+      <div className="flex-1 p-12 bg-white">
+        <div className="mb-8 pb-5 border-b border-slate-100">
+          <h1 className="text-4xl font-black uppercase tracking-tight text-slate-900 leading-tight">{data.name}</h1>
+          <p className="text-xs font-bold uppercase tracking-[0.35em] mt-2.5" style={{ color: themeColor }}>{data.role}</p>
+        </div>
+        <div className={dens.gap}>
+          <section><h2 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.25em] border-b border-slate-100 pb-1.5 mb-2.5">{labels.summary}</h2><div className={`${dens.text} text-slate-600 leading-relaxed`}>{renderText(data.summary)}</div></section>
+          <section><h2 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.25em] border-b border-slate-100 pb-1.5 mb-2.5">{labels.experience}</h2><div className={`${dens.text} text-slate-800 leading-relaxed`}>{renderText(data.experience)}</div></section>
+          <section><h2 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.25em] border-b border-slate-100 pb-1.5 mb-2.5">{labels.achievements}</h2><div className={`${dens.text} text-slate-800 font-medium leading-relaxed`}>{renderText(data.achievements)}</div></section>
+          {validCustom.map(sec => (
+            <section key={sec.id}><h2 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.25em] border-b border-slate-100 pb-1.5 mb-2.5">{sec.title}</h2><div className={`${dens.text} text-slate-700 leading-relaxed`}>{renderText(sec.content)}</div></section>
           ))}
         </div>
       </div>
@@ -1283,750 +991,1490 @@ function ResumeRenderer({ data, template, themeColor, photo, customSections, sho
 }
 
 // ─── Cover Letter Renderer ────────────────────────────────────────────────────
-function CoverLetterRenderer({ data, template, themeColor, photo }: any) {
-  const cl = {hiringManager:"Hiring Manager",companyName:"Company Name",jobTitle:"the advertised position",date:new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}),openingParagraph:"I am writing to express my strong interest in the position at your esteemed organization. With my background and proven track record, I am confident I would be a valuable asset to your team.",bodyParagraph1:"Throughout my career, I have consistently demonstrated the ability to deliver outstanding results. My experience has equipped me with a strong foundation in leadership, strategic thinking, and collaborative problem-solving that drives measurable outcomes.",bodyParagraph2:"I am particularly drawn to your organization because of its commitment to excellence and innovation. I believe my skills and values align perfectly with your company culture, and I am excited about the opportunity to contribute to your continued success.",closingParagraph:"I would welcome the opportunity to discuss how my experience and passion can contribute to your team. Thank you for considering my application. I look forward to hearing from you.",...data};
-
-  if(template==="cl-executive")return(<div id="cover-letter-document" className="w-[210mm] min-h-[297mm] bg-white flex"><div className="w-[68mm] min-w-[68mm] p-10 flex flex-col gap-8 print-bg" style={{backgroundColor:themeColor}}>{photo&&<div className="w-28 h-28 rounded-full border-4 border-white/20 mx-auto overflow-hidden shadow-2xl"><img src={photo} className="w-full h-full object-cover" alt=""/></div>}<div className="text-white space-y-1"><h2 className="text-lg font-black uppercase tracking-tighter leading-tight text-white">{cl.name}</h2><p className="text-[9px] font-bold uppercase tracking-[0.2em] opacity-70 text-white">{cl.role}</p></div><div className="space-y-3 border-t border-white/20 pt-6"><p className="flex items-start gap-2 text-[9px] text-white opacity-80 break-all"><Mail size={10} className="mt-0.5 shrink-0"/>{cl.email}</p><p className="flex items-center gap-2 text-[9px] text-white opacity-80"><Phone size={10}/>{cl.phone}</p><p className="flex items-center gap-2 text-[9px] text-white opacity-80 uppercase"><MapPin size={10}/>{cl.location}</p></div></div><div className="flex-1 p-14 bg-white space-y-8"><div><p className="text-[10px] text-slate-400 font-bold uppercase">{cl.date}</p><h1 className="text-4xl font-black uppercase tracking-tighter text-slate-900 leading-none mt-4">Cover<br/><span style={{color:themeColor}}>Letter.</span></h1></div><div className="text-[11px] font-bold text-slate-700"><p>Dear {cl.hiringManager},</p><p className="text-slate-400 font-medium mt-1">{cl.companyName}</p></div><div className="space-y-5 text-[11px] text-slate-600 leading-relaxed"><p>{cl.openingParagraph}</p><p>{cl.bodyParagraph1}</p><p>{cl.bodyParagraph2}</p><p>{cl.closingParagraph}</p></div><div className="pt-4"><p className="text-[11px] text-slate-600 mb-6">Sincerely,</p><p className="text-lg font-black uppercase tracking-tighter" style={{color:themeColor}}>{cl.name}</p><p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mt-1">{cl.role}</p></div></div></div>);
-  if(template==="cl-bold")return(<div id="cover-letter-document" className="w-[210mm] min-h-[297mm] bg-white flex flex-col"><div className="px-16 py-14 print-bg flex items-center justify-between" style={{backgroundColor:themeColor}}><div><h1 className="text-6xl font-black uppercase tracking-tighter text-white leading-none">{cl.name}</h1><p className="text-sm font-bold uppercase tracking-[0.4em] text-white/70 mt-3">{cl.role}</p></div>{photo&&<img src={photo} className="w-36 h-36 rounded-2xl border-4 border-white/20 object-cover shadow-2xl" alt=""/>}</div><div className="flex gap-8 px-16 py-4 bg-slate-900 text-white/60 text-[9px] font-bold uppercase tracking-widest"><span>{cl.email}</span><span>·</span><span>{cl.phone}</span></div><div className="flex-1 p-16 space-y-7"><div className="flex justify-between items-start"><div className="text-[11px] font-bold text-slate-700"><p>Dear {cl.hiringManager},</p><p className="font-normal text-slate-400">{cl.companyName}</p></div><p className="text-[9px] text-slate-400 uppercase">{cl.date}</p></div><div className="space-y-5 text-[11px] text-slate-600 leading-relaxed"><p className="pl-4 border-l-4" style={{borderColor:themeColor}}>{cl.openingParagraph}</p><p>{cl.bodyParagraph1}</p><p>{cl.bodyParagraph2}</p><p>{cl.closingParagraph}</p></div><div className="pt-4"><p className="text-[11px] text-slate-500 mb-4">Best regards,</p><p className="text-base font-black uppercase" style={{color:themeColor}}>{cl.name}</p></div></div></div>);
-  if(template==="cl-elegant")return(<div id="cover-letter-document" className="w-[210mm] min-h-[297mm] bg-white p-20 flex flex-col"><div className="text-center border-b-2 pb-8 mb-10" style={{borderColor:themeColor}}><h1 className="text-5xl font-light tracking-widest uppercase text-slate-800 mb-2">{cl.name}</h1><p className="text-[9px] tracking-[0.5em] uppercase text-slate-400 mb-5">{cl.role}</p><div className="flex justify-center gap-8 text-[9px] text-slate-400 uppercase tracking-widest"><span>{cl.email}</span><span>·</span><span>{cl.phone}</span></div></div><div className="flex-1 max-w-[420px] mx-auto w-full space-y-7"><p className="text-[10px] text-slate-400 tracking-widest uppercase">{cl.date}</p><div className="text-[11px] text-slate-600"><p className="font-bold text-slate-800">Dear {cl.hiringManager},</p><p className="italic text-slate-400 mt-0.5">{cl.companyName}</p></div><div className="space-y-5 text-[12px] text-slate-600 leading-loose"><p>{cl.openingParagraph}</p><p>{cl.bodyParagraph1}</p><p>{cl.bodyParagraph2}</p><p>{cl.closingParagraph}</p></div><div className="pt-6"><p className="text-[11px] italic text-slate-500 mb-6">With warm regards,</p><div className="border-t w-40 border-slate-200 pt-3"><p className="text-sm font-bold tracking-widest uppercase text-slate-700">{cl.name}</p></div></div></div></div>);
-  if(template==="cl-minimal")return(<div id="cover-letter-document" className="w-[210mm] min-h-[297mm] bg-white p-20"><div className="flex justify-between items-start mb-16"><div><h1 className="text-4xl font-light tracking-tight text-slate-900 uppercase">{cl.name}</h1><p className="text-[10px] font-medium opacity-40 tracking-[0.4em] uppercase mt-1">{cl.role}</p></div><div className="text-right text-[9px] text-slate-400 space-y-1 font-bold uppercase tracking-tighter"><p>{cl.email}</p><p>{cl.phone}</p></div></div><div className="grid grid-cols-5 gap-10"><div className="col-span-1 pt-1"><div className="h-px bg-slate-900 mb-2"/><p className="text-[8px] font-black uppercase tracking-[0.3em] text-slate-300">Date</p><p className="text-[9px] font-bold text-slate-500 mt-2">{cl.date}</p></div><div className="col-span-4 space-y-7"><div className="text-[11px] text-slate-600"><p className="font-bold text-slate-900">Dear {cl.hiringManager},</p><p className="text-slate-400 italic text-[10px] mt-0.5">{cl.companyName}</p></div><div className="space-y-5 text-[11px] text-slate-600 leading-loose"><p>{cl.openingParagraph}</p><p>{cl.bodyParagraph1}</p><p>{cl.bodyParagraph2}</p><p>{cl.closingParagraph}</p></div><div className="pt-6 border-t border-slate-100"><p className="text-[10px] text-slate-400 mb-4">Regards,</p><p className="text-base font-light tracking-widest uppercase text-slate-800">{cl.name}</p><div className="h-px mt-2 w-24" style={{backgroundColor:themeColor}}/></div></div></div></div>);
-  if(template==="cl-corporate")return(<div id="cover-letter-document" className="w-[210mm] min-h-[297mm] bg-white p-16 flex flex-col"><div className="text-center space-y-4 border-b-2 pb-8 mb-10" style={{borderColor:themeColor}}>{photo&&<img src={photo} className="w-24 h-24 rounded-full mx-auto border-4 object-cover shadow-lg" style={{borderColor:themeColor}} alt=""/>}<h1 className="text-4xl font-black uppercase tracking-tighter text-slate-900">{cl.name}</h1><p className="font-bold uppercase tracking-widest text-sm" style={{color:themeColor}}>{cl.role}</p><div className="flex justify-center gap-6 text-[9px] font-bold text-slate-400"><span>{cl.email}</span><span>·</span><span>{cl.phone}</span></div></div><div className="grid grid-cols-3 gap-10 flex-1"><div className="space-y-6"><div><h4 className="text-[8px] font-black uppercase tracking-[0.3em] border-b pb-1 mb-3" style={{borderColor:themeColor,color:themeColor}}>Date</h4><p className="text-[10px] text-slate-600">{cl.date}</p></div><div><h4 className="text-[8px] font-black uppercase tracking-[0.3em] border-b pb-1 mb-3" style={{borderColor:themeColor,color:themeColor}}>Addressed To</h4><p className="text-[10px] font-bold text-slate-700">{cl.hiringManager}</p><p className="text-[10px] text-slate-500 italic">{cl.companyName}</p></div></div><div className="col-span-2 space-y-5"><p className="text-[11px] font-bold text-slate-800">Dear {cl.hiringManager},</p><div className="space-y-4 text-[11px] text-slate-600 leading-relaxed"><p>{cl.openingParagraph}</p><p>{cl.bodyParagraph1}</p><p>{cl.bodyParagraph2}</p><p>{cl.closingParagraph}</p></div><div className="pt-6"><p className="text-[10px] text-slate-400 mb-4">Yours faithfully,</p><p className="text-sm font-black uppercase tracking-tight" style={{color:themeColor}}>{cl.name}</p></div></div></div></div>);
-  if(template==="cl-creative")return(<div id="cover-letter-document" className="w-[210mm] min-h-[297mm] bg-white overflow-hidden relative flex flex-col"><div className="absolute top-0 right-0 w-[280px] h-[280px] print-bg opacity-10" style={{backgroundColor:themeColor,clipPath:"polygon(100% 0, 0 0, 100% 100%)"}}/><div className="absolute top-0 right-0 w-[180px] h-[180px] print-bg" style={{backgroundColor:themeColor,clipPath:"polygon(100% 0, 30% 0, 100% 70%)"}}/><div className="px-16 pt-14 pb-8 flex items-end justify-between relative z-10"><div><h1 className="text-5xl font-black uppercase tracking-tighter text-slate-900 leading-none">{cl.name}</h1><p className="text-xs font-bold uppercase tracking-[0.4em] mt-3" style={{color:themeColor}}>{cl.role}</p></div>{photo&&<img src={photo} className="w-28 h-28 rounded-full border-4 border-white object-cover shadow-xl" alt=""/>}</div><div className="mx-16 mb-8 flex gap-6 py-3 border-y border-slate-100 text-[9px] text-slate-400 font-bold uppercase"><span>{cl.email}</span><span>·</span><span>{cl.phone}</span></div><div className="flex-1 px-16 pb-14 space-y-6"><div className="flex justify-between text-[11px]"><div><p className="font-bold text-slate-800">Dear {cl.hiringManager},</p><p className="text-slate-400 text-[10px]">{cl.companyName}</p></div><p className="text-[9px] text-slate-400">{cl.date}</p></div><div className="space-y-5 text-[11px] text-slate-600 leading-relaxed"><p>{cl.openingParagraph}</p><p>{cl.bodyParagraph1}</p><p>{cl.bodyParagraph2}</p><p>{cl.closingParagraph}</p></div><div className="pt-4"><p className="text-[10px] text-slate-400 mb-3">With appreciation,</p><p className="text-base font-black uppercase tracking-tight" style={{color:themeColor}}>{cl.name}</p></div></div></div>);
-  if(template==="cl-timeline")return(<div id="cover-letter-document" className="w-[210mm] min-h-[297mm] bg-white flex"><div className="w-3 print-bg" style={{backgroundColor:themeColor}}/><div className="flex-1 p-16 flex flex-col"><div className="flex items-center gap-6 mb-12 pb-8 border-b border-slate-100">{photo&&<img src={photo} className="w-24 h-24 rounded-2xl object-cover shadow-lg border-4 border-white" alt=""/>}<div><h1 className="text-4xl font-black uppercase tracking-tighter text-slate-900 leading-none">{cl.name}</h1><p className="text-[10px] font-bold uppercase tracking-[0.4em] mt-2" style={{color:themeColor}}>{cl.role}</p><div className="flex gap-3 mt-3 text-[9px] text-slate-400 font-medium"><span>{cl.email}</span><span>·</span><span>{cl.phone}</span></div></div></div><div className="space-y-6 flex-1">{[{label:`Introduction · ${cl.date}`,content:cl.openingParagraph,greeting:`Dear ${cl.hiringManager},`,sub:cl.companyName,filled:true},{label:"Experience & Value",content:cl.bodyParagraph1,filled:false},{label:"Fit & Motivation",content:cl.bodyParagraph2,filled:false},{label:"Closing",content:cl.closingParagraph,filled:false,isLast:true}].map((item,i)=>(<div key={i} className="flex gap-5"><div className="flex flex-col items-center"><div className="w-3 h-3 rounded-full border-2 mt-1 shrink-0" style={{borderColor:themeColor,backgroundColor:item.filled?themeColor:'white'}}/>{!item.isLast&&<div className="w-px flex-1 bg-slate-100 mt-1"/>}</div><div className="-mt-0.5 pb-5"><p className="text-[8px] font-black uppercase tracking-[0.3em] mb-1" style={{color:item.filled?themeColor:'#94a3b8'}}>{item.label}</p>{item.greeting&&<><p className="text-[11px] font-bold text-slate-700 mb-0.5">{item.greeting}</p><p className="text-[10px] italic text-slate-400 mb-1">{item.sub}</p></>}<p className="text-[11px] text-slate-600 leading-relaxed">{item.content}</p>{item.isLast&&<div className="mt-5"><p className="text-[10px] text-slate-400 mb-2">Sincerely,</p><p className="text-base font-black uppercase tracking-tight" style={{color:themeColor}}>{cl.name}</p></div>}</div></div>))}</div></div></div>);
-  // default cl-modern
-  return(<div id="cover-letter-document" className="w-[210mm] min-h-[297mm] bg-slate-50 p-10 flex flex-col gap-6"><div className="rounded-[28px] p-10 text-white flex items-center justify-between print-bg shadow-xl" style={{backgroundColor:themeColor}}><div><p className="text-[8px] font-black uppercase tracking-[0.4em] text-white/60 mb-2">Cover Letter</p><h1 className="text-5xl font-black uppercase tracking-tighter text-white leading-none">{cl.name}</h1><p className="text-xs font-bold uppercase tracking-[0.4em] text-white/70 mt-3">{cl.role}</p><div className="flex gap-5 mt-4 text-[9px] text-white/60 font-bold"><span>{cl.email}</span><span>·</span><span>{cl.phone}</span></div></div>{photo&&<img src={photo} className="w-32 h-32 rounded-3xl border-4 border-white/20 object-cover shadow-2xl" alt=""/>}</div><div className="flex-1 bg-white rounded-[28px] p-12 shadow-sm border border-slate-100 flex flex-col gap-6"><div className="flex justify-between items-start"><div className="text-[11px]"><p className="font-bold text-slate-800">Dear {cl.hiringManager},</p><p className="text-slate-400 text-[10px] mt-0.5 italic">{cl.companyName}</p></div><p className="text-[9px] text-slate-400 uppercase font-bold">{cl.date}</p></div><div className="space-y-5 text-[11px] text-slate-600 leading-relaxed flex-1"><p className="p-4 rounded-2xl bg-slate-50 border-l-4 font-medium italic" style={{borderColor:themeColor}}>{cl.openingParagraph}</p><p>{cl.bodyParagraph1}</p><p>{cl.bodyParagraph2}</p><p>{cl.closingParagraph}</p></div><div className="border-t pt-6"><p className="text-[10px] text-slate-400 mb-2">Warm regards,</p><p className="text-base font-black uppercase tracking-tight" style={{color:themeColor}}>{cl.name}</p></div></div></div>);
-}
-
-// ─── Section Label Editor ─────────────────────────────────────────────────────
-function SectionLabelEditor({ labels, onUpdate, onReset, presets, onPreset, dark }: {
-  labels: Record<string,string>; onUpdate: (key: string, val: string) => void;
-  onReset: () => void; presets: { name: string; emoji: string; labels: Record<string,string> }[];
-  onPreset: (labels: Record<string,string>) => void; dark: boolean;
+function CoverLetterRenderer({ data, template, themeColor, photo, showPhoto, fontStack }: {
+  data: ResumeData; template: string; themeColor: string; photo: string | null; showPhoto: boolean; fontStack: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<string|null>(null);
-  const inputCls = dark ? 'bg-slate-700 border-slate-600 text-slate-100' : 'bg-white border-slate-200 text-slate-900';
-  const FIELD_ICONS: Record<string,string> = { summary:"📝", experience:"💼", achievements:"🏆", education:"🎓", certifications:"📜", skills:"⚡" };
+  const activePhoto = showPhoto ? photo : null;
+  const style: React.CSSProperties = { fontFamily: fontStack };
 
-  return (
-    <div className={`rounded-2xl border overflow-hidden ${dark?'border-slate-700 bg-slate-800/50':'border-slate-200 bg-slate-50'}`}>
-      <button onClick={() => setOpen(o => !o)}
-        className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${dark?'hover:bg-slate-700/50':'hover:bg-slate-100'}`}>
-        <div className="flex items-center gap-2">
-          <span className="text-base">🏷️</span>
-          <span className={`text-[10px] font-black uppercase tracking-widest ${dark?'text-slate-300':'text-slate-700'}`}>Section Labels</span>
-        </div>
-        <span className={`text-[10px] transition-transform duration-200 ${open?'rotate-180':''} ${dark?'text-slate-400':'text-slate-400'}`}>▼</span>
-      </button>
-      {open && (
-        <div className="px-4 pb-4 space-y-4">
-          <div className="flex flex-wrap gap-1.5">
-            {presets.map(p => (
-              <button key={p.name} onClick={() => onPreset(p.labels)}
-                className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-colors ${dark?'border-slate-600 text-slate-300 hover:border-blue-500':'border-slate-200 text-slate-600 hover:border-blue-400'}`}>
-                {p.emoji} {p.name}
-              </button>
-            ))}
-          </div>
-          <div className="space-y-1.5">
-            {Object.entries(labels).map(([key, val]) => (
-              <div key={key} className="flex items-center gap-2">
-                <span className="text-sm w-5 shrink-0 text-center">{FIELD_ICONS[key]}</span>
-                {editing === key ? (
-                  <input autoFocus className={`flex-1 text-[11px] font-bold px-2 py-1.5 rounded-lg border focus:outline-none ${inputCls}`}
-                    value={val} onChange={e => onUpdate(key, e.target.value)}
-                    onBlur={() => setEditing(null)} onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setEditing(null); }}/>
-                ) : (
-                  <button onClick={() => setEditing(key)}
-                    className={`flex-1 text-left text-[11px] font-bold px-2 py-1.5 rounded-lg border transition-colors ${dark?'border-slate-700 text-slate-300 hover:border-blue-500':'border-slate-200 text-slate-700 hover:border-blue-400'}`}>
-                    {val}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-          <button onClick={onReset} className={`text-[9px] font-bold uppercase flex items-center gap-1 ${dark?'text-slate-500 hover:text-slate-300':'text-slate-400 hover:text-slate-600'}`}>
-            ↺ Reset to defaults
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-const COLORS = ["#0a1e3c","#1e40af","#065f46","#991b1b","#6b21a8","#111827","#f97316"];
-const RESUME_TEMPLATES = ['richard','brandon','lauren','minimal','creative','corporate','grid','split'];
-const CL_TEMPLATES = [{id:"cl-modern",label:"Modern"},{id:"cl-executive",label:"Executive"},{id:"cl-elegant",label:"Elegant"},{id:"cl-bold",label:"Bold"},{id:"cl-minimal",label:"Minimal"},{id:"cl-creative",label:"Creative"},{id:"cl-corporate",label:"Corporate"},{id:"cl-timeline",label:"Timeline"}];
-
-const photoMarcus = "https://i.postimg.cc/52fDX49M/IMG-8291.jpg";
-
-const DEFAULT_DATA = {
-  name:"Richard Sanchez",role:"Marketing Manager",email:"hello@reallygreatsite.com",phone:"+123-456-7890",linkedin:"linkedin.com/in/richardsanchez",location:"New York, USA",
-  summary:"Creative and results-driven marketing manager with 5+ years of experience in digital growth and brand strategy.",
-  experience:"Borcelle Studio | Senior Manager | 2030 - Present\n• Led a team of 10 to increase ROI by 25%.\n• Developed multi-channel marketing campaigns.\n\nFauget Studio | Junior Lead | 2025 - 2029\n• Increased brand awareness by 40% on social media.",
-  education:"Wardiere University | Master of Business Management",skills:"Project Management, SEO, Public Relations, Teamwork",
-  certifications:"Google Ads Certified, HubSpot Inbound",achievements:"• Increased annual revenue by 20%\n• Employee of the Year 2025",languages:"English (Native), French (Fluent)",
-  hiringManager:"Hiring Manager",companyName:"Company Name",jobTitle:"the advertised position",
-  date:new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}),
-  openingParagraph:"I am writing to express my strong interest in the position at your esteemed organization. With my background and proven track record, I am confident I would be a valuable asset to your team.",
-  bodyParagraph1:"Throughout my career, I have consistently demonstrated the ability to deliver outstanding results. My experience has equipped me with a strong foundation in leadership, strategic thinking, and collaborative problem-solving.",
-  bodyParagraph2:"I am particularly drawn to your organization because of its commitment to excellence and innovation. I believe my skills and values align perfectly with your company culture.",
-  closingParagraph:"I would welcome the opportunity to discuss how my experience and passion can contribute to your team. Thank you for considering my application.",
-};
-
-// ─── Floating Resume Card (landing page) ─────────────────────────────────────
-function FloatingResume({ name, role, color, delay, photo, typedSummary, skills, score, company }: any) {
-  const initials = name.split(' ').map((w:string) => w[0]).join('').slice(0,2);
-  return (
-    <div className={`w-[240px] sm:w-[270px] relative ${delay} animate-bounce-slow`} style={{filter:'drop-shadow(0 32px 48px rgba(0,0,0,0.18))'}}>
-      <div className="absolute -inset-2 rounded-3xl opacity-30 blur-xl pointer-events-none" style={{background:`radial-gradient(ellipse at 50% 50%, ${color}, transparent 70%)`}}/>
-      <div className="relative rounded-3xl overflow-hidden border border-white/10 hover:scale-[1.03] transition-transform duration-500"
-        style={{background:'linear-gradient(145deg, rgba(15,23,42,0.97) 0%, rgba(30,41,59,0.97) 100%)'}}>
-        <div className="h-1 w-full" style={{background:`linear-gradient(90deg, transparent, ${color}, transparent)`}}/>
-        <div className="p-4 sm:p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"/>
-              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-400">Hiring</span>
-            </div>
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full border" style={{borderColor:`${color}50`, background:`${color}15`}}>
-              <Zap size={8} style={{color}}/>
-              <span className="text-[8px] font-black" style={{color}}>{score || 94}%</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="relative shrink-0">
-              {photo ? <img src={photo} alt={name} className="w-11 h-11 rounded-2xl object-cover" style={{boxShadow:`0 0 0 2px ${color}60`}}/>
-                : <div className="w-11 h-11 rounded-2xl flex items-center justify-center font-black text-sm text-white" style={{background:`linear-gradient(135deg, ${color}, ${color}99)`}}>{initials}</div>}
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center border-2 border-slate-900">
-                <CheckCircle size={8} className="text-white" fill="currentColor"/>
-              </div>
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-black text-white text-sm tracking-tight truncate">{name}</h3>
-              <p className="text-[9px] font-bold truncate" style={{color}}>{role}</p>
-            </div>
-          </div>
-          <div className="mb-3 bg-white/5 rounded-2xl p-2.5 border border-white/5 min-h-[44px]">
-            <p className="text-[8px] leading-relaxed text-slate-300">
-              {typedSummary || "Strategic leader focused on high-impact solutions."}
-              <span className="animate-pulse text-blue-400 font-bold">|</span>
-            </p>
-          </div>
-          <div className="space-y-1.5">
-            {(skills || [['Leadership',88],['Strategy',92],['Design',75]]).map(([skill, pct]: [string,number], i: number) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-[7px] font-black text-slate-400 uppercase w-14 shrink-0">{skill}</span>
-                <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full rounded-full" style={{width:`${pct}%`, background:`linear-gradient(90deg, ${color}99, ${color})`}}/>
-                </div>
-                <span className="text-[7px] font-black text-slate-500 w-4 text-right">{pct}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="px-4 pb-3 flex items-center justify-between">
-          <div className="flex -space-x-1.5">
-            {['#3b82f6','#10b981','#f59e0b','#8b5cf6'].map((c,i) => (
-              <div key={i} className="w-5 h-5 rounded-full border-2 border-slate-900 flex items-center justify-center text-[6px] font-black text-white" style={{backgroundColor:c}}>
-                {['R','H','S','M'][i]}
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center gap-1">
-            <Star size={8} className="fill-amber-400 text-amber-400"/>
-            <span className="text-[8px] font-black text-amber-400">4.9</span>
-          </div>
-        </div>
-        <div className="h-px w-full" style={{background:`linear-gradient(90deg, transparent, ${color}60, transparent)`}}/>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main App ─────────────────────────────────────────────────────────────────
-export default function BoscoApp() {
-  const [view, setView] = useState<"landing"|"editor"|"cover-letter">("landing");
-  const [template, setTemplate] = useState("richard");
-  const [clTemplate, setClTemplate] = useState("cl-modern");
-  const [themeColor, setThemeColor] = useState("#0a1e3c");
-  const [photo, setPhoto] = useState<string|null>(null);
-  const [typingText, setTypingText] = useState("");
-  const [aiPanelOpen, setAiPanelOpen] = useState(false); // default closed on mobile
-  const [dark, setDark] = useState(false);
-  const [industryFilter, setIndustryFilter] = useState("all");
-  const [data, setData] = useState(DEFAULT_DATA);
-  const [restorePrompt, setRestorePrompt] = useState(false);
-  const [showQR, setShowQR] = useState(false);
-  const [mobileTab, setMobileTab] = useState<"form"|"preview"|"ai">("form");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  const DEFAULT_LABELS: Record<string,string> = { summary:"Professional Summary", experience:"Professional History", achievements:"Achievements", education:"Education", certifications:"Certifications", skills:"Skills" };
-  const [sectionLabels, setSectionLabels] = useState(DEFAULT_LABELS);
-  const updateLabel = (key: string, val: string) => setSectionLabels(p => ({ ...p, [key]: val }));
-  const resetLabels = () => setSectionLabels(DEFAULT_LABELS);
-
-  const LABEL_PRESETS = [
-    { name: "Standard",  emoji: "👔", labels: DEFAULT_LABELS },
-    { name: "Academic",  emoji: "🎓", labels: { summary:"Research Profile", experience:"Academic Appointments", achievements:"Publications", education:"Degrees & Training", certifications:"Awards & Honors", skills:"Research Areas" } },
-    { name: "Creative",  emoji: "🎨", labels: { summary:"About Me", experience:"Projects & Work", achievements:"Highlights", education:"Training", certifications:"Credentials", skills:"Expertise" } },
-    { name: "Tech",      emoji: "💻", labels: { summary:"Profile", experience:"Work History", achievements:"Key Wins", education:"Education", certifications:"Certifications", skills:"Tech Stack" } },
-    { name: "Executive", emoji: "🏢", labels: { summary:"Executive Summary", experience:"Leadership History", achievements:"Impact & Results", education:"Education", certifications:"Board & Committees", skills:"Core Competencies" } },
-  ];
-
-  const [customSections, setCustomSections] = useState<CustomSection[]>([]);
-  const addCustomSection = () => setCustomSections(prev => [...prev, { id: Date.now().toString(), title: "", content: "", icon: "🏆" }]);
-  const removeCustomSection = (id: string) => setCustomSections(prev => prev.filter(s => s.id !== id));
-  const updateCustomSection = (id: string, field: "title" | "content", val: string) =>
-    setCustomSections(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
-  const reorderCustomSections = (from: number, to: number) => {
-    setCustomSections(prev => {
-      const arr = [...prev];
-      const [moved] = arr.splice(from, 1);
-      arr.splice(to, 0, moved);
-      return arr;
-    });
-  };
-
-  const { lastSaved, saving } = useAutoSave(data, template, themeColor);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("bosco_autosave");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const minutesAgo = (Date.now() - new Date(parsed.savedAt).getTime()) / 60000;
-        if (minutesAgo < 60 && parsed.data?.name !== DEFAULT_DATA.name) setRestorePrompt(true);
-      }
-    } catch {}
-  }, []);
-
-  const restoreAutoSave = () => {
-    try {
-      const stored = localStorage.getItem("bosco_autosave");
-      if (stored) { const { data: d, template: t, themeColor: c } = JSON.parse(stored); setData(d); setTemplate(t); setThemeColor(c); }
-    } catch {}
-    setRestorePrompt(false);
-  };
-
-  const update = (key: string, val: string) => setData(p => ({ ...p, [key]: val }));
-
-  const heroTyped = useTypewriter("This resume builder gets you hired!", 150, 4000);
-  const sarahSummary = useTypewriter("Seasoned Product Designer with a flair for user-centric solutions.", 80, 5000);
-  const marcusSummary = useTypewriter("Innovative Software Engineer passionate about scalable apps.", 80, 5000);
-  useEffect(() => setTypingText(heroTyped), [heroTyped]);
-
-  const liveScore = calcScore(data).score;
-  const scoreBadgeColor = liveScore >= 80 ? "bg-green-500" : liveScore >= 60 ? "bg-amber-500" : "bg-red-500";
-  const visibleTemplates = INDUSTRY_TEMPLATES[industryFilter]?.templates || RESUME_TEMPLATES;
-  useEffect(() => { document.body.style.backgroundColor = dark ? '#0f172a' : ''; }, [dark]);
-
-  const d = {
-    bg: dark ? 'bg-slate-900' : 'bg-white',
-    border: dark ? 'border-slate-700' : 'border-slate-200',
-    text: dark ? 'text-slate-100' : 'text-slate-900',
-    muted: dark ? 'text-slate-400' : 'text-slate-500',
-    sidebar: dark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200',
-    input: dark ? 'bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400',
-    canvas: dark ? 'bg-slate-800/60' : 'bg-slate-200/60',
-    toolbar: dark ? 'bg-slate-800/90 border-slate-700' : 'bg-white/90 border-slate-200',
-  };
-
-  // ── LANDING PAGE ──────────────────────────────────────────────────────────
-  if (view === "landing") return (
-    <div className={`min-h-screen ${dark ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} font-sans transition-colors`}>
-      {restorePrompt && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 bg-blue-600 text-white px-4 py-3 rounded-2xl shadow-2xl text-sm font-bold w-[90vw] max-w-md">
-          <Clock size={16}/> Unsaved work found
-          <button onClick={restoreAutoSave} className="underline">Restore</button>
-          <button onClick={() => setRestorePrompt(false)} className="ml-auto"><X size={16}/></button>
-        </div>
-      )}
-
-      {/* Nav */}
-      <nav className={`flex justify-between items-center px-4 sm:px-10 py-4 sm:py-6 border-b sticky top-0 ${dark ? 'bg-slate-950/90 border-slate-800' : 'bg-white/90 border-slate-100'} backdrop-blur-md z-50`}>
-        <div className="text-xl sm:text-2xl font-black text-blue-600 italic tracking-tighter uppercase">RESUME.AI</div>
-        <div className="flex items-center gap-2 sm:gap-4">
-          <button onClick={() => setDark(!dark)} className={`p-2 rounded-xl border transition-colors ${dark ? 'border-slate-700 text-yellow-400' : 'border-slate-200 text-slate-500'}`}>
-            {dark ? <Sun size={16}/> : <Moon size={16}/>}
-          </button>
-          <button onClick={() => setView("editor")} className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded-xl font-bold hover:shadow-lg transition-all uppercase text-sm">
-            Build CV
-          </button>
-        </div>
-      </nav>
-
-      {/* Hero */}
-      <header className="py-12 sm:py-20 text-center px-4 max-w-7xl mx-auto flex flex-col items-center">
-        {/* Floating cards — hidden on small mobile, shown md+ */}
-        <div className="hidden md:flex justify-center items-end gap-6 mb-12 h-72 w-full overflow-visible">
-          <div className="-rotate-6 translate-y-8 hidden lg:block">
-            <FloatingResume name="Sarah Jenkins" role="Product Designer" color="#f97316" delay="animate-delay-1" photo="https://images.unsplash.com/photo-1580489944761-15a19d654956?q=80&w=400&auto=format&fit=crop" typedSummary={sarahSummary} score={91} company="Figma" skills={[['UI/UX',95],['Research',88],['Figma',92]]}/>
-          </div>
-          <div className="z-10 -translate-y-4">
-            <FloatingResume name="Marcus Chen" role="Software Engineer" color="#3b82f6" delay="animate-delay-0" photo={photoMarcus} typedSummary={marcusSummary} score={97} company="Google" skills={[['React',96],['TypeScript',91],['Node.js',84]]}/>
-          </div>
-        </div>
-        {/* Mobile single card */}
-        <div className="md:hidden mb-8 flex justify-center">
-          <FloatingResume name="Marcus Chen" role="Software Engineer" color="#3b82f6" delay="animate-delay-0" photo={photoMarcus} typedSummary={marcusSummary} score={97} company="Google" skills={[['React',96],['TypeScript',91],['Node.js',84]]}/>
-        </div>
-
-        <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter mb-4 sm:mb-6"><Sparkles size={12}/> AI-powered</div>
-        <h1 className={`text-4xl sm:text-6xl md:text-8xl font-black tracking-tighter mb-6 sm:mb-8 min-h-[60px] sm:min-h-[100px] ${d.text}`}>{typingText}<span className="text-blue-600 animate-pulse">|</span></h1>
-        <div className="flex gap-3 sm:gap-4 flex-col sm:flex-row w-full sm:w-auto">
-          <button onClick={() => setView("editor")} className="bg-slate-900 text-white px-8 sm:px-12 py-4 sm:py-5 rounded-2xl font-black text-base sm:text-xl shadow-2xl hover:bg-blue-600 transition-all flex items-center justify-center gap-3 uppercase">
-            Create Resume <Layout size={20}/>
-          </button>
-          <button onClick={() => setView("cover-letter")} className={`${dark ? 'bg-slate-800 border-slate-700 text-slate-100' : 'bg-white text-slate-900 border-2 border-slate-200'} px-8 sm:px-10 py-4 sm:py-5 rounded-2xl font-black text-base sm:text-xl shadow-lg hover:border-blue-600 hover:text-blue-600 transition-all flex items-center justify-center gap-3 uppercase`}>
-            Cover Letter <FileText size={20}/>
-          </button>
-        </div>
-      </header>
-
-      {/* Features strip */}
-      <div className="py-10 sm:py-16 bg-gradient-to-r from-blue-600 to-indigo-700 px-4 sm:px-10">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-6 sm:mb-8">
-            <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter text-white">Built-in AI Tools</h2>
-          </div>
-          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-10 gap-3">
-            {[{icon:<PenTool size={16}/>,title:"AI Writer"},{icon:<BarChart2 size={16}/>,title:"Live Score"},{icon:<Search size={16}/>,title:"ATS Check"},{icon:<TrendingUp size={16}/>,title:"Interview %"},{icon:<BriefcaseIcon size={16}/>,title:"Job Boards"},{icon:<Bold size={16}/>,title:"Rich Text"},{icon:<QrCode size={16}/>,title:"QR Code"},{icon:<Plus size={16}/>,title:"Custom"},{icon:<SpellCheck size={16}/>,title:"Grammar"},{icon:<Save size={16}/>,title:"Auto-Save"}].map((f,i)=>(
-              <div key={i} className="flex flex-col items-center text-center bg-white/10 rounded-2xl p-2 sm:p-3">
-                <div className="text-white mb-1">{f.icon}</div>
-                <p className="text-[7px] sm:text-[8px] font-black uppercase text-white">{f.title}</p>
-              </div>
-            ))}
-          </div>
-          <div className="text-center mt-6">
-            <button onClick={() => setView("editor")} className="bg-white text-blue-600 px-6 sm:px-8 py-3 sm:py-4 rounded-2xl font-black uppercase tracking-widest text-sm hover:-translate-y-0.5 transition-all inline-flex items-center gap-2">
-              Try Free <Sparkles size={16}/>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Templates */}
-      <div className={`py-16 sm:py-24 ${dark ? 'bg-slate-950' : 'bg-white'} px-4 sm:px-10`}>
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-between items-end mb-6 sm:mb-8">
-            <div>
-              <h2 className={`text-2xl sm:text-4xl font-black uppercase tracking-tighter ${d.text}`}>Resume Templates</h2>
-              <p className={`${d.muted} text-sm mt-1 hidden sm:block`}>Click any to start editing</p>
-            </div>
-          </div>
-          <div className="mb-6">
-            <IndustryFilter selected={industryFilter} onSelect={setIndustryFilter} dark={dark}/>
-          </div>
-          <div id="slider" className="flex overflow-x-auto gap-4 sm:gap-8 pb-8 snap-x" style={{scrollbarWidth:'none'}}>
-            {RESUME_TEMPLATES.filter(t => visibleTemplates.includes(t)).map(t => (
-              <div key={t} onClick={() => {setTemplate(t);setView("editor");}} className="group cursor-pointer flex-none w-[200px] sm:w-[300px] snap-center">
-                <div className={`aspect-[3/4] ${dark ? 'bg-slate-800' : 'bg-slate-100'} rounded-2xl mb-3 shadow-xl group-hover:border-blue-500 overflow-hidden border-4 border-transparent transition-all flex items-center justify-center`}>
-                  <div className="w-[210mm] h-[297mm] origin-center scale-[0.24] sm:scale-[0.32] pointer-events-none shadow-2xl">
-                    <ResumeRenderer data={data} template={t} themeColor={themeColor} photo={photoMarcus} customSections={[]} showQR={false}/>
-                  </div>
-                </div>
-                <h3 className={`font-black uppercase text-[10px] sm:text-xs text-center tracking-widest ${d.muted} group-hover:text-blue-600 transition-colors`}>{t}</h3>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Testimonials */}
-      <div className={`py-16 sm:py-28 px-4 sm:px-10 ${dark ? 'bg-slate-900' : 'bg-slate-50'}`}>
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-10 sm:mb-16">
-            <div className="inline-flex items-center gap-2 bg-green-500/10 border border-green-500/20 text-green-600 px-4 py-1 rounded-full text-[10px] font-black uppercase mb-4"><ThumbsUp size={12}/> Success Stories</div>
-            <h2 className={`text-3xl sm:text-5xl font-black uppercase tracking-tighter ${d.text}`}>Real People.<br/><span className="text-green-500">Real Interviews.</span></h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            {TESTIMONIALS.map((t, i) => (
-              <div key={i} className={`${dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'} border rounded-[28px] p-5 sm:p-7 flex flex-col gap-4`}>
-                <div className="flex gap-1">{Array(t.rating).fill(0).map((_,s)=><Star key={s} size={13} className="text-amber-400 fill-amber-400"/>)}</div>
-                <p className={`text-[12px] leading-relaxed ${dark ? 'text-slate-300' : 'text-slate-600'} italic flex-1`}>"{t.text}"</p>
-                <div className="flex items-center gap-3 pt-3 border-t border-slate-100">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-black shrink-0" style={{backgroundColor:t.color}}>{t.avatar}</div>
-                  <div><p className={`text-[11px] font-black ${dark?'text-slate-100':'text-slate-800'}`}>{t.name}</p><p className="text-[10px] font-bold" style={{color:t.color}}>{t.role}</p></div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-10 sm:mt-16 grid grid-cols-3 gap-3 sm:gap-6">
-            {[{stat:"47,000+",label:"Resumes Created",color:"#3b82f6"},{stat:"89%",label:"Interview Rate",color:"#10b981"},{stat:"4.9 ★",label:"Avg Rating",color:"#f59e0b"}].map(({stat,label,color},i)=>(
-              <div key={i} className={`${dark?'bg-slate-800':'bg-white'} border ${d.border} rounded-2xl sm:rounded-3xl p-4 sm:p-8 text-center`}>
-                <div className="text-2xl sm:text-4xl font-black mb-1 sm:mb-2" style={{color}}>{stat}</div>
-                <p className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${d.muted}`}>{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* CTA + Cover Letter */}
-      <div className={`py-16 px-4 sm:px-10 border-t ${dark?'bg-slate-900 border-slate-800':'bg-white border-slate-100'}`}>
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-8 bg-gradient-to-br from-slate-900 to-slate-800 rounded-[32px] sm:rounded-[40px] p-8 sm:p-12 shadow-2xl">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.35em] text-blue-400 mb-3">Complete Your Application</p>
-              <h3 className="text-2xl sm:text-4xl font-black uppercase tracking-tighter text-white leading-tight mb-4">
-                Pair it with a<br/><span className="text-blue-400">Cover Letter.</span>
-              </h3>
-            </div>
-            <div className="flex flex-col items-center gap-5">
-              <div className="flex gap-2 sm:gap-3">
-                {["cl-executive","cl-bold","cl-modern","cl-elegant"].map(t=>(
-                  <div key={t} onClick={()=>{setClTemplate(t);setView("cover-letter");}} className="w-[64px] sm:w-[80px] h-[85px] sm:h-[106px] rounded-xl overflow-hidden cursor-pointer hover:scale-110 transition-transform border-2 border-transparent hover:border-blue-400 bg-slate-700 flex items-center justify-center">
-                    <div className="scale-[0.09] sm:scale-[0.115] origin-center w-[210mm] h-[297mm] pointer-events-none">
-                      <CoverLetterRenderer data={data} template={t} themeColor={themeColor} photo={null}/>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button onClick={() => setView("cover-letter")} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-sm flex items-center gap-3 shadow-xl">
-                <FileText size={18}/> Build Cover Letter <ChevronRight size={16}/>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <footer className={`py-10 px-4 sm:px-10 border-t ${dark?'bg-slate-950 border-slate-800':'border-slate-100'} flex flex-col sm:flex-row justify-between items-center gap-4`}>
-        <div className="flex flex-col items-center sm:items-start gap-2">
-          <p className={`${d.text} font-black text-sm`}>Get in Touch</p>
-          <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
-            <a href="mailto:boscohabarugira30@gmail.com" className={`hover:text-blue-600 transition-colors text-xs flex items-center gap-1 ${d.muted} font-bold`}><Mail size={10}/> boscohabarugira30@gmail.com</a>
-            <a href="https://linkedin.com/in/bosco-habarugira" target="_blank" rel="noopener noreferrer" className={`hover:text-blue-600 flex items-center gap-1 text-xs font-bold ${d.muted}`}><Linkedin size={10}/> LinkedIn</a>
-          </div>
-        </div>
-        <div className={`${d.muted} text-xs font-bold`}>
-          Created with <Heart className="text-red-500 inline fill-red-500" size={12}/> by <span className={`${d.text} font-black`}>BOSCO</span>
-        </div>
-      </footer>
-
-      <style>{`
-        @keyframes bounce-slow{0%,100%{transform:translateY(0)}50%{transform:translateY(-20px)}}
-        @keyframes marquee-left{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-        @keyframes shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
-        .animate-bounce-slow{animation:bounce-slow 4s ease-in-out infinite}
-        .animate-delay-1{animation-delay:1s}.animate-delay-2{animation-delay:2s}
-        .snap-x{scroll-snap-type:x mandatory}.snap-center{scroll-snap-align:center}
-        #slider::-webkit-scrollbar{display:none}
-        @page{margin:12mm 12mm 12mm 12mm!important;size:A4 portrait}@media print{.no-print{display:none!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}body{background:white!important;margin:0!important;padding:0!important}.text-slate-400,.text-slate-300{color:#374151!important}.text-gray-400,.text-gray-300{color:#374151!important}[class*="text-slate-4"],[class*="text-slate-3"]{color:#374151!important}html{height:auto!important;overflow:hidden!important}body>*{page-break-after:avoid!important}}
-      `}</style>
-    </div>
-  );
-
-  // ── RESUME EDITOR ─────────────────────────────────────────────────────────
-  if (view === "editor") {
-    // Shared form fields JSX for sidebar
-    const FormFields = () => (
-      <>
-        <ProgressBar data={data} dark={dark}/>
-        <div className="flex items-center justify-between">
-          <span className={`text-[9px] font-black uppercase tracking-widest ${d.muted}`}>Versions</span>
-          <SaveLoadPanel data={data} template={template} themeColor={themeColor} onLoad={(dd,t,c)=>{setData(dd);setTemplate(t);setThemeColor(c);}} dark={dark}/>
-        </div>
-
-        {/* Color */}
-        <div className="space-y-2">
-          <div className={`text-[9px] font-black uppercase ${d.muted} flex gap-1.5 items-center`}><Palette size={12}/> Theme</div>
-          <div className="flex gap-1.5 flex-wrap">
-            {COLORS.map(c=><button key={c} onClick={()=>setThemeColor(c)} className={`w-7 h-7 rounded-full border-2 transition-transform ${themeColor===c?'scale-125 border-blue-500':'border-transparent'}`} style={{backgroundColor:c}}/>)}
-            <input type="color" value={themeColor} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>setThemeColor(e.target.value)} className="w-7 h-7 rounded-full border-none p-0 cursor-pointer"/>
-          </div>
-        </div>
-
-        {/* Photo + QR */}
-        <div className={`flex items-center gap-3 ${dark?'bg-slate-800 border-slate-700':'bg-slate-50'} p-3 rounded-xl border-2 border-dashed`}>
-          <div className={`w-14 h-14 ${dark?'bg-slate-700':'bg-white'} rounded-lg shadow-inner flex items-center justify-center overflow-hidden relative shrink-0`}>
-            {photo?<img src={photo} className="w-full h-full object-cover" alt="Profile"/>:<Camera className={d.muted} size={18}/>}
-            <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e: React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files;if(f&&f[0])setPhoto(URL.createObjectURL(f[0]))}}/>
-          </div>
-          <div className="flex-1 space-y-2">
-            <p className={`text-[9px] font-black uppercase ${d.muted}`}>Photo · tap to upload</p>
-            <button onClick={() => setShowQR(!showQR)}
-              className={`flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-lg transition-colors ${showQR ? 'bg-blue-600 text-white' : (dark?'bg-slate-700 text-slate-400':'bg-white border border-slate-200 text-slate-500')}`}>
-              <QrCode size={10}/> QR {showQR ? 'ON' : 'OFF'}
-            </button>
-          </div>
-        </div>
-
-        <LinkedInImport dark={dark} onImport={(fields) => Object.entries(fields).forEach(([k,v]) => update(k, v as string))}/>
-
-        <div className="grid gap-2.5">
-          {([["Full Name","name"],["Job Title","role"],["Location","location"],["LinkedIn","linkedin"]] as [string,string][]).map(([ph,k])=>(
-            <input key={k} placeholder={ph} className={`w-full p-2.5 rounded-lg border text-sm ${d.input}`} value={(data as any)[k]} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update(k,e.target.value)}/>
-          ))}
-          <div className="grid grid-cols-2 gap-2">
-            <input placeholder="Email" className={`p-2.5 rounded-lg border text-xs w-full ${d.input}`} value={data.email} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update("email",e.target.value)}/>
-            <input placeholder="Phone" className={`p-2.5 rounded-lg border text-xs w-full ${d.input}`} value={data.phone} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update("phone",e.target.value)}/>
-          </div>
-          <RichTextarea label={sectionLabels.summary} fieldKey="summary" value={data.summary} onChange={update} rows={3} dark={dark} wordTarget={60}/>
-          <RichTextarea label={sectionLabels.experience} fieldKey="experience" value={data.experience} onChange={update} rows={5} dark={dark} wordTarget={150}/>
-          <RichTextarea label={sectionLabels.achievements} fieldKey="achievements" value={data.achievements} onChange={update} rows={3} dark={dark} wordTarget={50}/>
-          {([[sectionLabels.education,"education",2],[sectionLabels.certifications,"certifications",2]] as [string,string,number][]).map(([label,k,rows])=>(
-            <div key={k}>
-              <div className={`text-[9px] font-black uppercase ${d.muted} mt-1`}>{label}</div>
-              <textarea className={`w-full p-2.5 rounded-lg border text-sm resize-none ${d.input}`} rows={rows} value={(data as any)[k]} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update(k,e.target.value)}/>
-            </div>
-          ))}
-          <div>
-            <div className={`text-[9px] font-black uppercase ${d.muted} mt-1`}>{sectionLabels.skills}</div>
-            <input placeholder="Comma separated" className={`w-full p-2.5 rounded-lg border text-sm ${d.input}`} value={data.skills} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update("skills",e.target.value)}/>
-          </div>
-        </div>
-
-        <div className={`pt-2 border-t ${dark?'border-slate-700':'border-slate-200'}`}>
-          <SectionLabelEditor labels={sectionLabels} onUpdate={updateLabel} onReset={resetLabels} presets={LABEL_PRESETS} onPreset={(l: Record<string,string>) => setSectionLabels(l as any)} dark={dark}/>
-        </div>
-        <div className={`pt-2 border-t ${dark?'border-slate-700':'border-slate-200'}`}>
-          <CustomSectionBuilder sections={customSections} onAdd={addCustomSection} onRemove={removeCustomSection} onUpdate={updateCustomSection} onReorder={reorderCustomSections} dark={dark}/>
-        </div>
-      </>
-    );
-
+  if (template === "cl-executive") {
     return (
-      <div className={`flex flex-col h-screen ${dark?'bg-slate-950':'bg-slate-100'} overflow-hidden font-sans`}>
-        {/* ── DESKTOP LAYOUT (md+) ── */}
-        <div className="hidden md:flex flex-1 overflow-hidden">
-          {/* Left sidebar */}
-          <aside className={`w-[360px] ${d.sidebar} border-r shadow-xl z-20 overflow-y-auto p-5 flex flex-col gap-4 no-print shrink-0`}>
-            <div className="flex items-center justify-between">
-              <button onClick={() => setView("landing")} className={`flex items-center gap-2 ${d.muted} font-bold hover:text-blue-600 text-xs uppercase tracking-widest`}><ArrowLeft size={14}/> Back</button>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${scoreBadgeColor}`}/><span className={`text-xs font-black ${d.muted}`}>{liveScore}/100</span>
-                <button onClick={() => setDark(!dark)} className={`p-2 rounded-xl border ${dark?'border-slate-700 text-yellow-400':'border-slate-200 text-slate-500'}`}>{dark?<Sun size={14}/>:<Moon size={14}/>}</button>
-              </div>
-            </div>
-            <h2 className="text-xl font-black uppercase text-blue-600">CV Editor</h2>
-            <div className={`flex items-center gap-2 text-[9px] font-bold uppercase ${dark?'text-slate-500':'text-slate-400'}`}>
-              {saving?<><Loader size={10} className="animate-spin text-blue-500"/><span className="text-blue-500">Saving...</span></>:lastSaved?<><CheckCircle size={10} className="text-green-500"/><span>Saved {lastSaved.toLocaleTimeString()}</span></>:<><Clock size={10}/><span>Auto-saves every 5s</span></>}
-            </div>
-            <FormFields/>
-          </aside>
-
-          {/* Center preview */}
-          <main className={`flex-1 overflow-y-auto flex flex-col items-center ${d.canvas} min-w-0`}>
-            <div className={`my-4 flex flex-wrap gap-2 ${d.toolbar} p-2.5 rounded-2xl shadow-xl sticky top-4 z-10 no-print border mx-4`}>
-              {RESUME_TEMPLATES.map(t=><button key={t} onClick={()=>setTemplate(t)} className={`px-2.5 py-1.5 rounded-lg text-[8px] font-black uppercase transition-all ${template===t?'bg-blue-600 text-white shadow-lg':`${d.muted} hover:text-slate-700`}`}>{t}</button>)}
-              <PDFDownloadButton dark={dark}/>
-              <button onClick={()=>window.print()} className={`${dark?'bg-slate-700 text-slate-200':'bg-black text-white'} hover:bg-blue-600 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5`}><Printer size={12}/> Print</button>
-              <button onClick={()=>setView("cover-letter")} className="bg-blue-50 text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 hover:bg-blue-600 hover:text-white"><FileText size={11}/> CL</button>
-            </div>
-            <div className="w-full flex justify-center origin-top scale-[0.55] lg:scale-[0.75] xl:scale-100 mb-[-380px] lg:mb-[-100px] xl:mb-0 print:scale-100 print:m-0 pb-4">
-              <ResumeRenderer data={data} template={template} themeColor={themeColor} photo={photo} customSections={customSections} showQR={showQR} labels={sectionLabels}/>
-            </div>
-          </main>
-
-          {/* Right AI panel */}
-          <div className={`${dark?'bg-slate-900 border-slate-700':'bg-white border-slate-200'} border-l shadow-xl z-20 flex flex-col no-print transition-all duration-300 ${aiPanelOpen?'w-[320px]':'w-12'} shrink-0`}>
-            <button onClick={()=>setAiPanelOpen(!aiPanelOpen)}
-              className={`flex items-center justify-center gap-2 p-3 border-b ${dark?'bg-slate-800 border-slate-700':'bg-slate-50 border-slate-100'}`}>
-              {aiPanelOpen ? (
-                <><span className={`text-[9px] font-black uppercase ${d.muted} flex items-center gap-1.5`}><Sparkles size={11} className="text-blue-600"/> AI Tools</span><ChevronRight size={14} className={`${d.muted} ml-auto`}/></>
-              ) : <Sparkles size={16} className="text-blue-600"/>}
-            </button>
-            {aiPanelOpen && <div className="flex-1 overflow-hidden"><AIPanel data={data} onUpdate={update} dark={dark}/></div>}
+      <div id="cover-letter-document" style={style} className="w-[210mm] min-h-[297mm] bg-white flex text-slate-900">
+        <div className="w-[66mm] p-9 text-white flex flex-col gap-6 shrink-0" style={{ backgroundColor: themeColor }}>
+          {activePhoto && <img src={activePhoto} alt={data.name} className="w-24 h-24 rounded-full border-4 border-white/20 mx-auto object-cover" />}
+          <div><h2 className="text-lg font-black uppercase">{data.name}</h2><p className="text-[10px] text-white/75 uppercase tracking-wider mt-1">{data.role}</p></div>
+          <div className="space-y-2.5 border-t border-white/20 pt-5 text-[10px] text-white/85">
+            <p className="flex items-center gap-2 break-all"><Mail size={10} />{data.email}</p>
+            <p className="flex items-center gap-2"><Phone size={10} />{data.phone}</p>
+            <p className="flex items-center gap-2"><MapPin size={10} />{data.location}</p>
           </div>
         </div>
-
-        {/* ── MOBILE LAYOUT (< md) ── */}
-        <div className="md:hidden flex flex-col flex-1 overflow-hidden">
-          {/* Mobile top bar */}
-          <div className={`flex items-center justify-between px-3 py-2 border-b no-print ${dark?'bg-slate-900 border-slate-700':'bg-white border-slate-200'}`}>
-            <button onClick={() => setView("landing")} className={`flex items-center gap-1 ${d.muted} font-bold text-xs`}><ArrowLeft size={14}/> Home</button>
-            <div className="flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full ${scoreBadgeColor}`}/><span className={`text-xs font-black ${d.muted}`}>{liveScore}/100</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <PDFDownloadButton dark={dark} label="PDF"/>
-              <button onClick={() => setDark(!dark)} className={`p-1.5 rounded-lg border ${dark?'border-slate-700 text-yellow-400':'border-slate-200 text-slate-500'}`}>{dark?<Sun size={13}/>:<Moon size={13}/>}</button>
-            </div>
-          </div>
-
-          {/* Mobile tabs */}
-          <div className={`flex border-b no-print ${dark?'bg-slate-900 border-slate-700':'bg-white border-slate-200'}`}>
-            {[{id:"form",label:"✏️ Edit"},{id:"preview",label:"👁 Preview"},{id:"ai",label:"✨ AI"}].map(tab=>(
-              <button key={tab.id} onClick={()=>setMobileTab(tab.id as any)}
-                className={`flex-1 py-2.5 text-[10px] font-black uppercase transition-all border-b-2 ${mobileTab===tab.id?'border-blue-600 text-blue-600':(dark?'border-transparent text-slate-500':'border-transparent text-slate-400')}`}>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Mobile content */}
-          <div className="flex-1 overflow-y-auto">
-            {mobileTab === "form" && (
-              <div className={`p-4 flex flex-col gap-4 ${dark?'bg-slate-900':'bg-white'}`}>
-                {/* Template selector */}
-                <div>
-                  <p className={`text-[9px] font-black uppercase ${d.muted} mb-2`}>Template</p>
-                  <div className="flex gap-2 overflow-x-auto pb-2" style={{scrollbarWidth:'none'}}>
-                    {RESUME_TEMPLATES.map(t=>(
-                      <button key={t} onClick={()=>setTemplate(t)}
-                        className={`flex-none px-3 py-1.5 rounded-lg text-[9px] font-black uppercase whitespace-nowrap ${template===t?'bg-blue-600 text-white':'bg-slate-100 text-slate-500'}`}>
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <FormFields/>
-              </div>
-            )}
-            {mobileTab === "preview" && (
-              <div className={`flex flex-col items-center py-4 ${d.canvas}`}>
-                <div className="w-full flex justify-center origin-top scale-[0.38] mb-[-350px]">
-                  <ResumeRenderer data={data} template={template} themeColor={themeColor} photo={photo} customSections={customSections} showQR={showQR} labels={sectionLabels}/>
-                </div>
-                <div className={`mt-4 mx-4 p-3 rounded-xl text-center ${dark?'bg-slate-800':'bg-white'} border ${d.border} text-xs ${d.muted}`}>
-                  👆 Preview (tap Edit to make changes)
-                </div>
-              </div>
-            )}
-            {mobileTab === "ai" && (
-              <div className="h-full">
-                <AIPanel data={data} onUpdate={update} dark={dark}/>
-              </div>
-            )}
-          </div>
+        <div className="flex-1 p-14 space-y-6">
+          <div><p className="text-[10px] text-slate-400 uppercase font-bold">{data.date}</p><h1 className="text-3xl font-black uppercase tracking-tight mt-2">Cover <span style={{ color: themeColor }}>Letter</span></h1></div>
+          <div className="text-[11px]"><p className="font-bold text-slate-800">Dear {data.hiringManager},</p><p className="text-slate-500 mt-0.5">{data.companyName} · Re: {data.jobTitle}</p></div>
+          <div className="space-y-4 text-[11.5px] text-slate-700 leading-relaxed"><p>{data.openingParagraph}</p><p>{data.bodyParagraph1}</p><p>{data.bodyParagraph2}</p><p>{data.closingParagraph}</p></div>
+          <div className="pt-4"><p className="text-[11px] text-slate-500 mb-4">Sincerely,</p><p className="text-base font-black uppercase" style={{ color: themeColor }}>{data.name}</p><p className="text-[10px] text-slate-400">{data.role}</p></div>
         </div>
-
-        <style>{`@page{margin:12mm 12mm 12mm 12mm!important;size:A4 portrait}@media print{.no-print{display:none!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}body{background:white!important;margin:0!important;padding:0!important}.text-slate-400,.text-slate-300{color:#374151!important}.text-gray-400,.text-gray-300{color:#374151!important}[class*="text-slate-4"],[class*="text-slate-3"]{color:#374151!important}html{height:auto!important;overflow:hidden!important}body>*{page-break-after:avoid!important}}`}</style>
       </div>
     );
   }
 
-  // ── COVER LETTER EDITOR ───────────────────────────────────────────────────
+  if (template === "cl-minimal" || template === "cl-corporate" || template === "cl-elegant") {
+    const centered = template === "cl-corporate" || template === "cl-elegant";
+    return (
+      <div id="cover-letter-document" style={template === "cl-elegant" ? { fontFamily: "Georgia, serif" } : style} className="w-[210mm] min-h-[297mm] bg-white p-16 text-slate-900">
+        <div className={`border-b-2 pb-6 mb-10 ${centered ? "text-center" : "flex justify-between items-start"}`} style={{ borderColor: themeColor }}>
+          <div>
+            {activePhoto && centered && <img src={activePhoto} alt={data.name} className="w-20 h-20 rounded-full mx-auto mb-3 object-cover border-2 border-slate-200" />}
+            <h1 className="text-3xl font-black uppercase tracking-tight">{data.name}</h1>
+            <p className="text-xs font-semibold uppercase tracking-widest mt-1" style={{ color: themeColor }}>{data.role}</p>
+          </div>
+          <div className={`text-[10px] text-slate-500 mt-3 ${centered ? "flex justify-center gap-4" : "text-right space-y-0.5"}`}>
+            <p>{data.email}</p><p>{data.phone}</p><p>{data.location}</p>
+          </div>
+        </div>
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div className="flex justify-between items-baseline text-[11px]">
+            <div><p className="font-bold text-slate-900">Dear {data.hiringManager},</p><p className="text-slate-500 text-[10px]">{data.companyName} — {data.jobTitle}</p></div>
+            <p className="text-[10px] text-slate-400">{data.date}</p>
+          </div>
+          <div className="space-y-4 text-[11.5px] text-slate-700 leading-relaxed"><p>{data.openingParagraph}</p><p>{data.bodyParagraph1}</p><p>{data.bodyParagraph2}</p><p>{data.closingParagraph}</p></div>
+          <div className="pt-6"><p className="text-[11px] text-slate-500 mb-5">Best regards,</p><p className="text-base font-bold" style={{ color: themeColor }}>{data.name}</p></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Modern / Bold / Creative / Timeline banner style
   return (
-    <div className={`flex flex-col h-screen ${dark?'bg-slate-950':'bg-slate-100'} overflow-hidden font-sans`}>
-      {/* Desktop layout */}
-      <div className="hidden md:flex flex-1 overflow-hidden">
-        <aside className={`w-[420px] ${d.sidebar} border-r shadow-2xl z-20 overflow-y-auto p-6 flex flex-col gap-5 no-print`}>
-          <div className="flex items-center justify-between">
-            <button onClick={()=>setView("editor")} className={`flex items-center gap-2 ${d.muted} font-bold hover:text-blue-600 text-xs uppercase`}><ArrowLeft size={14}/> Resume</button>
-            <div className="flex items-center gap-2">
-              <button onClick={()=>setView("landing")} className={`${d.muted} font-bold hover:text-blue-600 text-xs uppercase`}>Home</button>
-              <button onClick={()=>setDark(!dark)} className={`p-2 rounded-xl border ${dark?'border-slate-700 text-yellow-400':'border-slate-200 text-slate-500'}`}>{dark?<Sun size={14}/>:<Moon size={14}/>}</button>
+    <div id="cover-letter-document" style={style} className="w-[210mm] min-h-[297mm] bg-white flex flex-col text-slate-900">
+      <div className="px-14 py-11 text-white flex items-center justify-between" style={{ backgroundColor: themeColor }}>
+        <div>
+          <p className="text-[9px] uppercase tracking-[0.35em] text-white/65 mb-2">Application Letter · {data.jobTitle}</p>
+          <h1 className="text-4xl font-black uppercase tracking-tight leading-none">{data.name}</h1>
+          <p className="text-sm font-medium text-white/85 mt-2">{data.role}</p>
+          <div className="flex gap-4 text-[10px] text-white/75 mt-3"><span>{data.email}</span><span>·</span><span>{data.phone}</span><span>·</span><span>{data.location}</span></div>
+        </div>
+        {activePhoto && <img src={activePhoto} alt={data.name} className="w-24 h-24 rounded-2xl border-4 border-white/25 object-cover" />}
+      </div>
+      <div className="flex-1 p-14 space-y-6">
+        <div className="flex justify-between items-start text-[11px]">
+          <div><p className="font-bold text-slate-900">Dear {data.hiringManager},</p><p className="text-slate-500">{data.companyName}</p></div>
+          <p className="text-[10px] font-semibold text-slate-400">{data.date}</p>
+        </div>
+        <div className="space-y-4 text-[11.5px] text-slate-700 leading-relaxed">
+          <p className="pl-4 border-l-4 italic text-slate-800" style={{ borderColor: themeColor }}>{data.openingParagraph}</p>
+          <p>{data.bodyParagraph1}</p>
+          <p>{data.bodyParagraph2}</p>
+          <p>{data.closingParagraph}</p>
+        </div>
+        <div className="pt-6 border-t border-slate-100">
+          <p className="text-[11px] text-slate-500 mb-3">Warm regards,</p>
+          <p className="text-lg font-black uppercase" style={{ color: themeColor }}>{data.name}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Floating Hero Card (Clean, Realistic — Zero Fake Ratings) ───────────────
+function FloatingResumeCard({ example, accent, className = "" }: { example: { label: string; photo: string; data: ResumeData }; accent: string; className?: string }) {
+  const skills = example.data.skills.split(",").map(s => s.trim()).slice(0, 4);
+  return (
+    <div className={`w-[250px] sm:w-[275px] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden text-left transition-transform duration-500 hover:-translate-y-1 ${className}`}>
+      <div className="h-1.5 w-full" style={{ backgroundColor: accent }} />
+      <div className="p-4 space-y-3">
+        <div className="flex items-center gap-3">
+          <img src={example.photo} alt={example.data.name} className="w-11 h-11 rounded-full object-cover border-2" style={{ borderColor: `${accent}40` }} />
+          <div className="min-w-0">
+            <p className="font-black text-slate-900 dark:text-white text-xs truncate">{example.data.name}</p>
+            <p className="text-[10px] font-semibold truncate" style={{ color: accent }}>{example.data.role}</p>
+            <p className="text-[9px] text-slate-400 truncate">{example.data.location}</p>
+          </div>
+        </div>
+        <p className="text-[9.5px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-3 bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl">
+          {example.data.summary}
+        </p>
+        <div className="space-y-1">
+          <p className="text-[8px] font-black uppercase tracking-widest text-slate-400">Experience Preview</p>
+          <p className="text-[9px] text-slate-700 dark:text-slate-300 line-clamp-2 leading-snug">
+            {example.data.experience.split("\n")[0]}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1 pt-1">
+          {skills.map((s, i) => (
+            <span key={i} className="text-[8.5px] font-semibold px-2 py-0.5 rounded-md" style={{ backgroundColor: `${accent}14`, color: accent }}>{s}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AI & Optimization Drawer ────────────────────────────────────────────────
+function ReviewDrawer({
+  data, onUpdate, dark,
+}: {
+  data: ResumeData; onUpdate: (k: keyof ResumeData, v: string) => void; dark: boolean;
+}) {
+  const [tab, setTab] = useState<"check" | "ats" | "writer" | "grammar" | "jobs">("check");
+  const [jobDesc, setJobDesc] = useState("");
+  const [atsRes, setAtsRes] = useState<ReturnType<typeof analyzeATS> | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiRes, setAiRes] = useState<{ summary: string; experience: string; achievements: string; source: string } | null>(null);
+  const [bulletCat, setBulletCat] = useState<string>("Impact");
+  const [jobQuery, setJobQuery] = useState(data.role);
+
+  const checklist = calcChecklist(data);
+  const grammarIssues = checkGrammar(data);
+
+  const runWriter = async () => {
+    setAiLoading(true);
+    const out = await generateAIContent(data);
+    setAiRes(out);
+    setAiLoading(false);
+  };
+
+  const applyGrammarFix = (issue: GrammarIssue) => {
+    if (!issue.replacement) return;
+    const current = data[issue.fieldKey] || "";
+    const escaped = issue.original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const updated = current.replace(new RegExp(escaped, "i"), issue.replacement);
+    onUpdate(issue.fieldKey, updated);
+  };
+
+  const appendBullet = (bullet: string) => {
+    const cur = data.experience.trim();
+    onUpdate("experience", cur ? `${cur}\n• ${bullet}` : `• ${bullet}`);
+  };
+
+  const card = dark ? "bg-slate-800/80 border-slate-700" : "bg-slate-50 border-slate-200";
+  const inputCls = dark ? "bg-slate-900 border-slate-700 text-slate-100 placeholder:text-slate-500" : "bg-white border-slate-200 text-slate-900 placeholder:text-slate-400";
+
+  return (
+    <div className={`flex flex-col h-full ${dark ? "bg-slate-900 text-slate-100" : "bg-white text-slate-900"}`}>
+      <div className={`grid grid-cols-5 border-b ${dark ? "border-slate-700 bg-slate-800/50" : "border-slate-200 bg-slate-50"}`}>
+        {[
+          { id: "check", label: "Check", icon: <BarChart2 size={13} /> },
+          { id: "ats", label: "ATS", icon: <Target size={13} /> },
+          { id: "writer", label: "AI", icon: <Sparkles size={13} /> },
+          { id: "grammar", label: "Proof", icon: <SpellCheck size={13} /> },
+          { id: "jobs", label: "Jobs", icon: <Briefcase size={13} /> },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id as any)}
+            className={`flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-bold border-b-2 transition-colors ${tab === t.id ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400 hover:text-slate-600"}`}
+          >
+            {t.icon}
+            <span>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {tab === "check" && (
+          <div className="space-y-4">
+            <div className={`p-4 rounded-2xl border ${card}`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold">Resume Readiness</span>
+                <span className="text-sm font-black text-blue-600">{checklist.passed}/{checklist.total}</span>
+              </div>
+              <div className={`h-2 rounded-full overflow-hidden ${dark ? "bg-slate-700" : "bg-slate-200"}`}>
+                <div className="h-full bg-blue-600 rounded-full transition-all duration-300" style={{ width: `${checklist.pct}%` }} />
+              </div>
+              <p className="text-[11px] text-slate-500 mt-2">Based on practical structure checks—not arbitrary scores.</p>
+            </div>
+            <div className="space-y-2">
+              {checklist.checks.map((c, i) => (
+                <div key={i} className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs ${c.pass ? (dark ? "bg-emerald-950/30 border-emerald-800/50 text-emerald-300" : "bg-emerald-50 border-emerald-200 text-emerald-800") : (dark ? "bg-slate-800 border-slate-700 text-slate-300" : "bg-white border-slate-200 text-slate-600")}`}>
+                  {c.pass ? <CheckCircle size={14} className="text-emerald-500 shrink-0" /> : <AlertCircle size={14} className="text-amber-500 shrink-0" />}
+                  <span>{c.label}</span>
+                </div>
+              ))}
             </div>
           </div>
-          <h2 className="text-2xl font-black uppercase text-blue-600 flex items-center gap-2"><FileText size={22}/> Cover Letter</h2>
+        )}
 
-          <div className="space-y-2">
-            <div className={`text-[9px] font-black uppercase ${d.muted} flex gap-2 items-center`}><Palette size={14}/> Theme</div>
-            <div className="flex gap-2 flex-wrap">
-              {COLORS.map(c=><button key={c} onClick={()=>setThemeColor(c)} className={`w-8 h-8 rounded-full border-2 ${themeColor===c?'scale-125 border-blue-500':'border-transparent'}`} style={{backgroundColor:c}}/>)}
-              <input type="color" value={themeColor} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>setThemeColor(e.target.value)} className="w-8 h-8 rounded-full border-none p-0 cursor-pointer"/>
+        {tab === "ats" && (
+          <div className="space-y-4">
+            <div className={`p-3.5 rounded-2xl border ${card}`}>
+              <p className="text-xs font-bold mb-1">Job Description Keyword Match</p>
+              <p className="text-[11px] text-slate-500 leading-relaxed">Paste the real job posting below to compare its top keywords against your current resume.</p>
+            </div>
+            <textarea
+              rows={5}
+              value={jobDesc}
+              onChange={e => setJobDesc(e.target.value)}
+              placeholder="Paste the target job description here..."
+              className={`w-full p-3 rounded-xl border text-xs resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${inputCls}`}
+            />
+            <button
+              onClick={() => jobDesc.trim() && setAtsRes(analyzeATS(data, jobDesc))}
+              disabled={!jobDesc.trim()}
+              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold flex items-center justify-center gap-2"
+            >
+              <Search size={13} /> Analyze Job Match
+            </button>
+            {atsRes && (
+              <div className="space-y-3">
+                <div className={`p-4 rounded-2xl border ${card} flex items-center justify-between`}>
+                  <div>
+                    <p className="text-xs font-bold">Keyword Coverage</p>
+                    <p className="text-[11px] text-slate-500">{atsRes.matched.length} of {atsRes.totalAnalyzed} key terms found</p>
+                  </div>
+                  <span className="text-2xl font-black text-blue-600">{atsRes.score}%</span>
+                </div>
+                {atsRes.matched.length > 0 && (
+                  <div className={`p-3 rounded-xl border ${dark ? "border-emerald-800/50 bg-emerald-950/20" : "border-emerald-200 bg-emerald-50"}`}>
+                    <p className="text-[10px] font-black uppercase text-emerald-600 mb-2">Matched Keywords</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {atsRes.matched.map(k => <span key={k} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-600/15 text-emerald-700 dark:text-emerald-300">{k}</span>)}
+                    </div>
+                  </div>
+                )}
+                {atsRes.missing.length > 0 && (
+                  <div className={`p-3 rounded-xl border ${dark ? "border-amber-800/50 bg-amber-950/20" : "border-amber-200 bg-amber-50"}`}>
+                    <p className="text-[10px] font-black uppercase text-amber-600 mb-2">Missing Terms (Click to add to Skills)</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {atsRes.missing.map(k => (
+                        <button
+                          key={k}
+                          onClick={() => onUpdate("skills", data.skills ? `${data.skills}, ${k}` : k)}
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-600/15 text-amber-800 dark:text-amber-300 hover:bg-amber-600 hover:text-white transition-colors"
+                        >
+                          + {k}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className={`p-3 rounded-xl border ${card} space-y-1.5`}>
+                  <p className="text-[10px] font-black uppercase text-slate-400">Recommendations</p>
+                  {atsRes.tips.map((t, i) => <p key={i} className="text-[11px] text-slate-600 dark:text-slate-300">• {t}</p>)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "writer" && (
+          <div className="space-y-4">
+            <div className={`p-3.5 rounded-2xl border ${card}`}>
+              <p className="text-xs font-bold mb-1">AI Polish & Bullet Assistant</p>
+              <p className="text-[11px] text-slate-500 leading-relaxed">Tighten weak phrasing into concise, recruiter-ready bullet points or insert proven templates below.</p>
+            </div>
+            <button
+              onClick={runWriter}
+              disabled={aiLoading}
+              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              {aiLoading ? <><Loader size={13} className="animate-spin" /> Polishing...</> : <><Wand2 size={13} /> Polish Summary & Bullets</>}
+            </button>
+            {aiRes && (
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold uppercase text-blue-600">
+                  {aiRes.source === "gemini" ? "Generated with Gemini AI" : "Smart Structured Draft"}
+                </p>
+                {([["summary", "Summary"], ["experience", "Experience"], ["achievements", "Achievements"]] as [keyof ResumeData, string][]).map(([k, lbl]) => (
+                  <div key={k} className={`p-3 rounded-xl border ${card} space-y-2`}>
+                    <p className="text-[10px] font-black uppercase text-slate-400">{lbl}</p>
+                    <p className="text-[11px] whitespace-pre-wrap leading-relaxed">{(aiRes as any)[k]}</p>
+                    <button onClick={() => onUpdate(k, (aiRes as any)[k])} className="text-[11px] font-bold text-blue-600 hover:underline">Apply {lbl}</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className={`p-3.5 rounded-2xl border ${card} space-y-3`}>
+              <p className="text-xs font-bold">Quick Bullet Bank</p>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.keys(BULLET_BANK).map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setBulletCat(cat)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${bulletCat === cat ? "bg-blue-600 text-white" : (dark ? "bg-slate-700 text-slate-300" : "bg-white border border-slate-200 text-slate-600")}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-2">
+                {BULLET_BANK[bulletCat].map((b, i) => (
+                  <button
+                    key={i}
+                    onClick={() => appendBullet(b)}
+                    className={`w-full text-left p-2.5 rounded-xl border text-[11px] leading-snug transition-colors ${dark ? "bg-slate-900 border-slate-700 hover:border-blue-500" : "bg-white border-slate-200 hover:border-blue-400"}`}
+                  >
+                    <span className="text-blue-600 font-bold mr-1">+</span>{b}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+        )}
 
-          <div className={`flex items-center gap-3 ${dark?'bg-slate-800 border-slate-700':'bg-slate-50'} p-3 rounded-2xl border-2 border-dashed`}>
-            <div className={`w-16 h-16 ${dark?'bg-slate-700':'bg-white'} rounded-xl shadow-inner flex items-center justify-center overflow-hidden relative`}>
-              {photo?<img src={photo} className="w-full h-full object-cover" alt="Profile"/>:<Camera className={d.muted}/>}
-              <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={(e: React.ChangeEvent<HTMLInputElement>)=>{const f=e.target.files;if(f&&f[0])setPhoto(URL.createObjectURL(f[0]))}}/>
-            </div>
-            <p className={`text-[9px] font-black uppercase ${d.muted}`}>Profile Photo · click to upload</p>
+        {tab === "grammar" && (
+          <div className="space-y-3">
+            {grammarIssues.length === 0 ? (
+              <div className={`p-6 rounded-2xl border text-center space-y-2 ${dark ? "bg-emerald-950/20 border-emerald-800/40" : "bg-emerald-50 border-emerald-200"}`}>
+                <CheckCircle size={24} className="text-emerald-500 mx-auto" />
+                <p className="text-xs font-bold">No spelling or weak-phrase issues found</p>
+                <p className="text-[11px] text-slate-500">Your wording looks sharp and active.</p>
+              </div>
+            ) : (
+              grammarIssues.map((issue, i) => (
+                <div key={i} className={`p-3 rounded-xl border space-y-1.5 ${card}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase text-amber-600">{issue.field} · {issue.type}</span>
+                    {issue.replacement && (
+                      <button onClick={() => applyGrammarFix(issue)} className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700">
+                        Quick Fix
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-300">{issue.message}</p>
+                  <p className="text-[10px]">
+                    <span className="line-through text-red-500 mr-1.5">{issue.original}</span>
+                    <span className="font-semibold text-emerald-600">→ {issue.suggestion}</span>
+                  </p>
+                </div>
+              ))
+            )}
           </div>
+        )}
 
-          <div className="grid gap-2.5">
-            <div className={`text-[9px] font-black uppercase ${d.muted}`}>Recipient Info</div>
-            {([["Hiring Manager Name","hiringManager"],["Company Name","companyName"],["Job Title","jobTitle"],["Date","date"]] as [string,string][]).map(([ph,k])=>(
-              <input key={k} placeholder={ph} className={`w-full p-2.5 rounded-xl border text-sm ${d.input}`} value={(data as any)[k]} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update(k,e.target.value)}/>
+        {tab === "jobs" && (
+          <div className="space-y-3">
+            <p className="text-xs font-bold">Search Open Roles</p>
+            <input
+              value={jobQuery}
+              onChange={e => setJobQuery(e.target.value)}
+              placeholder="Target job title..."
+              className={`w-full p-2.5 rounded-xl border text-xs ${inputCls}`}
+            />
+            {[
+              { name: "LinkedIn Jobs", url: `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(jobQuery || data.role)}` },
+              { name: "Indeed", url: `https://www.indeed.com/jobs?q=${encodeURIComponent(jobQuery || data.role)}` },
+              { name: "Glassdoor", url: `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${encodeURIComponent(jobQuery || data.role)}` },
+              { name: "Wellfound (Startups)", url: `https://wellfound.com/jobs` },
+              { name: "We Work Remotely", url: `https://weworkremotely.com/` },
+            ].map(board => (
+              <a
+                key={board.name}
+                href={board.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-colors ${dark ? "bg-slate-800 border-slate-700 hover:border-blue-500" : "bg-white border-slate-200 hover:border-blue-400"}`}
+              >
+                <span>{board.name}</span>
+                <ExternalLink size={13} className="text-slate-400" />
+              </a>
             ))}
-            <div className={`text-[9px] font-black uppercase ${d.muted} mt-2`}>Your Info</div>
-            <input placeholder="Full Name" className={`w-full p-2.5 rounded-xl border font-bold text-sm ${d.input}`} value={data.name} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update("name",e.target.value)}/>
-            <input placeholder="Job Title" className={`w-full p-2.5 rounded-xl border text-sm ${d.input}`} value={data.role} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update("role",e.target.value)}/>
-            <div className="grid grid-cols-2 gap-2">
-              <input placeholder="Email" className={`p-2.5 rounded-xl border text-xs ${d.input}`} value={data.email} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update("email",e.target.value)}/>
-              <input placeholder="Phone" className={`p-2.5 rounded-xl border text-xs ${d.input}`} value={data.phone} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update("phone",e.target.value)}/>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Application ─────────────────────────────────────────────────────────
+export default function ResumeBuilderApp() {
+  const [view, setView] = useState<"landing" | "editor" | "cover-letter">("landing");
+  const [template, setTemplate] = useState("richard");
+  const [clTemplate, setClTemplate] = useState("cl-modern");
+  const [themeColor, setThemeColor] = useState("#0f172a");
+  const [fontId, setFontId] = useState("sans");
+  const [densityId, setDensityId] = useState("balanced");
+  const [photo, setPhoto] = useState<string | null>(SAMPLE_PHOTOS.sarah);
+  const [showPhoto, setShowPhoto] = useState(true);
+  const [showQR, setShowQR] = useState(false);
+  const [dark, setDark] = useState(false);
+
+  // Landing state
+  const [galleryCategory, setGalleryCategory] = useState("all");
+  const [heroRoleKey, setHeroRoleKey] = useState<string>("marketing");
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
+
+  // Editor state
+  const [editorStep, setEditorStep] = useState<"profile" | "content" | "design" | "sections">("profile");
+  const [mobilePane, setMobilePane] = useState<"edit" | "preview" | "tools">("edit");
+  const [toolsOpen, setToolsOpen] = useState(true);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Resume data + Undo/Redo history
+  const [data, setData] = useState<ResumeData>(ROLE_EXAMPLES.marketing.data);
+  const [past, setPast] = useState<ResumeData[]>([]);
+  const [future, setFuture] = useState<ResumeData[]>([]);
+  const [sectionLabels, setSectionLabels] = useState<Record<string, string>>(DEFAULT_LABELS);
+  const [customSections, setCustomSections] = useState<CustomSection[]>([]);
+  const [saves, setSaves] = useState<SavedResume[]>([]);
+  const [savesOpen, setSavesOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [restorePrompt, setRestorePrompt] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+
+  const fontStack = FONT_OPTIONS.find(f => f.id === fontId)?.stack || FONT_OPTIONS[0].stack;
+
+  const notify = useCallback((msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2600);
+  }, []);
+
+  const update = useCallback((key: keyof ResumeData, val: string) => {
+    setData(prev => {
+      setPast(p => [...p.slice(-24), prev]);
+      setFuture([]);
+      return { ...prev, [key]: val };
+    });
+  }, []);
+
+  const undo = () => {
+    if (!past.length) return;
+    const prev = past[past.length - 1];
+    setFuture(f => [data, ...f]);
+    setPast(p => p.slice(0, -1));
+    setData(prev);
+  };
+
+  const redo = () => {
+    if (!future.length) return;
+    const next = future[0];
+    setPast(p => [...p, data]);
+    setFuture(f => f.slice(1));
+    setData(next);
+  };
+
+  const loadRoleExample = (key: string, openEditor = false) => {
+    const ex = ROLE_EXAMPLES[key];
+    if (!ex) return;
+    setPast(p => [...p.slice(-15), data]);
+    setData(ex.data);
+    setPhoto(ex.photo);
+    setShowPhoto(true);
+    if (openEditor) setView("editor");
+    notify(`Loaded ${ex.label} example`);
+  };
+
+  // Load saved versions + check autosave
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("bosco_saved_resumes_v2");
+      if (s) setSaves(JSON.parse(s));
+      const auto = localStorage.getItem("bosco_autosave_v2");
+      if (auto) {
+        const parsed = JSON.parse(auto);
+        if (parsed?.data?.name && parsed.data.name !== ROLE_EXAMPLES.marketing.data.name) setRestorePrompt(true);
+      }
+    } catch {}
+  }, []);
+
+  // Auto-save every 5 seconds while editing
+  useEffect(() => {
+    if (view === "landing") return;
+    const id = setInterval(() => {
+      try {
+        localStorage.setItem("bosco_autosave_v2", JSON.stringify({ data, template, themeColor, fontId, densityId, customSections, sectionLabels }));
+        setLastSaved(new Date());
+      } catch {}
+    }, 5000);
+    return () => clearInterval(id);
+  }, [view, data, template, themeColor, fontId, densityId, customSections, sectionLabels]);
+
+  const restoreDraft = () => {
+    try {
+      const auto = localStorage.getItem("bosco_autosave_v2");
+      if (auto) {
+        const p = JSON.parse(auto);
+        if (p.data) setData(p.data);
+        if (p.template) setTemplate(p.template);
+        if (p.themeColor) setThemeColor(p.themeColor);
+        if (p.fontId) setFontId(p.fontId);
+        if (p.densityId) setDensityId(p.densityId);
+        if (p.customSections) setCustomSections(p.customSections);
+        if (p.sectionLabels) setSectionLabels(p.sectionLabels);
+        setView("editor");
+        notify("Previous draft restored");
+      }
+    } catch {}
+    setRestorePrompt(false);
+  };
+
+  const saveVersion = () => {
+    const name = saveName.trim() || `${data.name} (${template})`;
+    const entry: SavedResume = { id: Date.now().toString(), name, data, template, themeColor, fontFamily: fontId, density: densityId, savedAt: new Date().toISOString() };
+    const updated = [entry, ...saves.filter(s => s.name !== name)].slice(0, 12);
+    setSaves(updated);
+    localStorage.setItem("bosco_saved_resumes_v2", JSON.stringify(updated));
+    setSaveName("");
+    notify(`Saved "${name}"`);
+  };
+
+  const deleteVersion = (id: string) => {
+    const updated = saves.filter(s => s.id !== id);
+    setSaves(updated);
+    localStorage.setItem("bosco_saved_resumes_v2", JSON.stringify(updated));
+  };
+
+  const parseRawResumeText = () => {
+    if (!importText.trim()) return;
+    const lines = importText.split("\n").map(l => l.trim()).filter(Boolean);
+    const next = { ...data };
+    const email = importText.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i)?.[0];
+    const phone = importText.match(/(\+?\d[\d\s\-().]{7,16}\d)/)?.[0];
+    const li = importText.match(/linkedin\.com\/in\/[\w-]+/i)?.[0];
+    const firstName = lines.find(l => l.split(" ").length <= 4 && /^[A-Z]/.test(l) && !l.includes("@"));
+    const edu = lines.find(l => /university|college|institute|bachelor|master|diploma|b\.sc|m\.sc/i.test(l));
+    const bullets = lines.filter(l => /^[•\-*]/.test(l) || /\d{4}/.test(l)).slice(0, 10);
+    const summaryCandidate = lines.find(l => l.length > 75 && !/^[•\-*]/.test(l));
+
+    if (firstName) next.name = firstName;
+    if (email) next.email = email;
+    if (phone) next.phone = phone.trim();
+    if (li) next.linkedin = li;
+    if (edu) next.education = edu;
+    if (summaryCandidate) next.summary = summaryCandidate;
+    if (bullets.length) next.experience = bullets.map(b => b.replace(/^[-*]\s*/, "• ")).join("\n");
+
+    setData(next);
+    setShowImportModal(false);
+    setImportText("");
+    setView("editor");
+    notify("Imported details into editor");
+  };
+
+  const handleJsonImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+        if (parsed.data) setData(parsed.data);
+        if (parsed.template) setTemplate(parsed.template);
+        if (parsed.themeColor) setThemeColor(parsed.themeColor);
+        if (parsed.customSections) setCustomSections(parsed.customSections);
+        if (parsed.sectionLabels) setSectionLabels(parsed.sectionLabels);
+        setView("editor");
+        notify("Backup imported");
+      } catch {
+        notify("Invalid JSON backup file");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const generateCoverLetterDraft = () => {
+    const skills = data.skills.split(",").map(s => s.trim()).filter(Boolean).slice(0, 3).join(", ");
+    setData(prev => ({
+      ...prev,
+      openingParagraph: `I am writing to express my strong interest in the ${prev.jobTitle || "open"} position at ${prev.companyName || "your organization"}. With my background as a ${prev.role}, I bring practical experience in ${skills || "delivering reliable results"} that directly supports your team's goals.`,
+      bodyParagraph1: prev.summary || prev.bodyParagraph1,
+      bodyParagraph2: `Throughout my recent work, I have prioritized structured execution, clear communication, and measurable outcomes. I admire ${prev.companyName || "your company"}'s direction and would welcome the opportunity to contribute both technical rigor and collaborative energy.`,
+      closingParagraph: `Thank you for your time and consideration. I would appreciate the chance to speak with ${prev.hiringManager || "your team"} about how my background aligns with this role.`,
+    }));
+    notify("Cover letter tailored to target role");
+  };
+
+  const checklist = calcChecklist(data);
+  const inputCls = dark
+    ? "bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500"
+    : "bg-white border-slate-200 text-slate-900 placeholder:text-slate-400";
+
+  // ── Shared Editor Sidebar Content (Rendered inline to preserve focus!) ─────
+  const renderEditorControls = () => (
+    <div className="space-y-5">
+      {/* Step Navigation */}
+      <div className={`grid grid-cols-4 gap-1 p-1 rounded-xl ${dark ? "bg-slate-800" : "bg-slate-100"}`}>
+        {[
+          { id: "profile", label: "Profile", icon: <UserIcon size={12} /> },
+          { id: "content", label: "Content", icon: <PenTool size={12} /> },
+          { id: "design", label: "Design", icon: <Palette size={12} /> },
+          { id: "sections", label: "More", icon: <Layers size={12} /> },
+        ].map(step => (
+          <button
+            key={step.id}
+            onClick={() => setEditorStep(step.id as any)}
+            className={`flex items-center justify-center gap-1 py-2 rounded-lg text-[11px] font-bold transition-all ${editorStep === step.id ? (dark ? "bg-slate-900 text-white shadow" : "bg-white text-blue-600 shadow-sm") : "text-slate-500 hover:text-slate-700"}`}
+          >
+            {step.icon}<span>{step.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {editorStep === "profile" && (
+        <div className="space-y-4">
+          {/* Quick starter examples */}
+          <div className={`p-3 rounded-xl border ${dark ? "bg-slate-800/60 border-slate-700" : "bg-blue-50/60 border-blue-100"}`}>
+            <p className="text-[10px] font-black uppercase tracking-wider text-blue-600 mb-2">Load Role Starter Example</p>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(ROLE_EXAMPLES).map(([k, ex]) => (
+                <button key={k} onClick={() => loadRoleExample(k)} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-colors ${dark ? "bg-slate-900 border-slate-700 text-slate-200 hover:border-blue-500" : "bg-white border-slate-200 text-slate-700 hover:border-blue-500"}`}>
+                  {ex.label}
+                </button>
+              ))}
             </div>
-            <input placeholder="Location" className={`w-full p-2.5 rounded-xl border text-sm ${d.input}`} value={data.location} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update("location",e.target.value)}/>
-            <div className={`text-[9px] font-black uppercase ${d.muted} mt-2`}>Letter Content</div>
-            {([["Opening Paragraph","openingParagraph"],["Body Paragraph 1","bodyParagraph1"],["Body Paragraph 2","bodyParagraph2"],["Closing Paragraph","closingParagraph"]] as [string,string][]).map(([label,k])=>(
+          </div>
+
+          {/* Photo & QR Controls */}
+          <div className={`p-3.5 rounded-xl border flex items-center gap-3.5 ${dark ? "bg-slate-800/60 border-slate-700" : "bg-slate-50 border-slate-200"}`}>
+            <div className={`w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center relative border shrink-0 ${dark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"}`}>
+              {photo ? <img src={photo} alt="Profile" className="w-full h-full object-cover" /> : <Camera size={18} className="text-slate-400" />}
+              <input
+                type="file" accept="image/*" title="Upload profile photo"
+                className="absolute inset-0 opacity-0 cursor-pointer"
+                onChange={e => { const f = e.target.files?.[0]; if (f) { setPhoto(URL.createObjectURL(f)); setShowPhoto(true); } }}
+              />
+            </div>
+            <div className="flex-1 space-y-2">
+              <p className="text-xs font-bold">Profile Photo</p>
+              <div className="flex flex-wrap gap-1.5">
+                <button onClick={() => setShowPhoto(!showPhoto)} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold ${showPhoto ? "bg-blue-600 text-white" : (dark ? "bg-slate-700 text-slate-300" : "bg-white border border-slate-200 text-slate-600")}`}>
+                  {showPhoto ? "Photo Shown" : "Photo Hidden"}
+                </button>
+                <button onClick={() => setShowQR(!showQR)} className={`px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 ${showQR ? "bg-blue-600 text-white" : (dark ? "bg-slate-700 text-slate-300" : "bg-white border border-slate-200 text-slate-600")}`}>
+                  <QrCode size={10} /> QR {showQR ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {([
+              ["Full Name", "name", "e.g. Claire Niyonkuru"],
+              ["Target Job Title", "role", "e.g. Digital Marketing Manager"],
+              ["Location", "location", "City, Country"],
+              ["LinkedIn", "linkedin", "linkedin.com/in/yourname"],
+              ["Portfolio / Website (Optional)", "website", "yourportfolio.dev"],
+            ] as [string, keyof ResumeData, string][]).map(([lbl, k, ph]) => (
               <div key={k}>
-                <div className={`text-[9px] ${d.muted} uppercase tracking-widest mb-1`}>{label}</div>
-                <textarea className={`w-full p-2.5 rounded-xl border h-20 text-sm resize-none ${d.input}`} value={(data as any)[k]} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update(k,e.target.value)}/>
-                <WordCountBadge text={(data as any)[k]} dark={dark}/>
+                <label className="block text-[11px] font-bold mb-1 text-slate-600 dark:text-slate-300">{lbl}</label>
+                <input value={data[k]} placeholder={ph} onChange={e => update(k, e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${inputCls}`} />
+              </div>
+            ))}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11px] font-bold mb-1 text-slate-600 dark:text-slate-300">Email</label>
+                <input value={data.email} onChange={e => update("email", e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${inputCls}`} />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-1 text-slate-600 dark:text-slate-300">Phone</label>
+                <input value={data.phone} onChange={e => update("phone", e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-xs focus:outline-none ${inputCls}`} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editorStep === "content" && (
+        <div className="space-y-4">
+          <RichTextarea label={sectionLabels.summary} fieldKey="summary" value={data.summary} onChange={update} rows={3} dark={dark} wordTarget={50} placeholder="2–3 crisp sentences summarizing your strengths and focus..." />
+          <RichTextarea label={sectionLabels.experience} fieldKey="experience" value={data.experience} onChange={update} rows={6} dark={dark} wordTarget={140} placeholder="Company | Title | Dates&#10;• Achievement with measurable result..." />
+          <RichTextarea label={sectionLabels.achievements} fieldKey="achievements" value={data.achievements} onChange={update} rows={3} dark={dark} wordTarget={45} />
+          <div>
+            <label className="block text-[11px] font-bold mb-1 text-slate-600 dark:text-slate-300">{sectionLabels.skills} (comma separated)</label>
+            <input value={data.skills} onChange={e => update("skills", e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-sm focus:outline-none ${inputCls}`} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold mb-1 text-slate-600 dark:text-slate-300">{sectionLabels.education}</label>
+            <textarea rows={2} value={data.education} onChange={e => update("education", e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-sm resize-none focus:outline-none ${inputCls}`} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold mb-1 text-slate-600 dark:text-slate-300">{sectionLabels.certifications}</label>
+            <textarea rows={2} value={data.certifications} onChange={e => update("certifications", e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-sm resize-none focus:outline-none ${inputCls}`} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold mb-1 text-slate-600 dark:text-slate-300">Languages</label>
+            <input value={data.languages} onChange={e => update("languages", e.target.value)} placeholder="e.g. English (Fluent), French (Intermediate)" className={`w-full px-3 py-2 rounded-xl border text-sm focus:outline-none ${inputCls}`} />
+          </div>
+        </div>
+      )}
+
+      {editorStep === "design" && (
+        <div className="space-y-5">
+          <div>
+            <p className="text-[11px] font-bold mb-2 flex items-center gap-1.5"><Layout size={13} /> Layout Template</p>
+            <div className="grid grid-cols-2 gap-2">
+              {RESUME_TEMPLATES.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setTemplate(t.id)}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${template === t.id ? "border-blue-600 bg-blue-600/10" : (dark ? "border-slate-700 hover:border-slate-500" : "border-slate-200 hover:border-slate-400")}`}
+                >
+                  <p className="text-xs font-bold">{t.name}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{t.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] font-bold mb-2 flex items-center gap-1.5"><Palette size={13} /> Accent Color</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {COLORS.map(c => (
+                <button key={c} onClick={() => setThemeColor(c)} className={`w-7 h-7 rounded-full border-2 transition-transform ${themeColor === c ? "scale-110 border-blue-500 ring-2 ring-blue-500/30" : "border-transparent"}`} style={{ backgroundColor: c }} />
+              ))}
+              <input type="color" value={themeColor} onChange={e => setThemeColor(e.target.value)} title="Custom color" className="w-7 h-7 rounded-full cursor-pointer border-0 p-0" />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] font-bold mb-2 flex items-center gap-1.5"><Type size={13} /> Typography</p>
+            <div className="grid grid-cols-2 gap-2">
+              {FONT_OPTIONS.map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setFontId(f.id)}
+                  className={`p-2.5 rounded-xl border text-left ${fontId === f.id ? "border-blue-600 bg-blue-600/10" : (dark ? "border-slate-700" : "border-slate-200")}`}
+                >
+                  <p className="text-xs font-bold" style={{ fontFamily: f.stack }}>{f.label}</p>
+                  <p className="text-[10px] text-slate-500">{f.sample}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] font-bold mb-2 flex items-center gap-1.5"><Sliders size={13} /> Page Density</p>
+            <div className="grid grid-cols-3 gap-2">
+              {DENSITY_OPTIONS.map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => setDensityId(opt.id)}
+                  className={`py-2 rounded-xl border text-xs font-bold ${densityId === opt.id ? "border-blue-600 bg-blue-600 text-white" : (dark ? "border-slate-700 text-slate-300" : "border-slate-200 text-slate-600")}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] font-bold mb-2">Section Heading Presets</p>
+            <div className="flex flex-wrap gap-1.5 mb-2.5">
+              {LABEL_PRESETS.map(p => (
+                <button key={p.name} onClick={() => setSectionLabels(p.labels)} className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold ${dark ? "border-slate-700 hover:border-blue-500" : "border-slate-200 hover:border-blue-500"}`}>
+                  {p.name}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-1.5">
+              {Object.entries(sectionLabels).map(([k, v]) => (
+                <input key={k} value={v} onChange={e => setSectionLabels(prev => ({ ...prev, [k]: e.target.value }))} className={`w-full px-2.5 py-1.5 rounded-lg border text-xs ${inputCls}`} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editorStep === "sections" && (
+        <div className="space-y-5">
+          {/* Import & Backup Tools */}
+          <div className={`p-3.5 rounded-xl border space-y-2.5 ${dark ? "bg-slate-800/60 border-slate-700" : "bg-slate-50 border-slate-200"}`}>
+            <p className="text-xs font-bold">Import & Backup</p>
+            <button onClick={() => setShowImportModal(true)} className="w-full py-2 rounded-xl border border-blue-500/40 text-blue-600 text-xs font-bold flex items-center justify-center gap-2 hover:bg-blue-600 hover:text-white transition-colors">
+              <Upload size={13} /> Paste LinkedIn or Existing Resume
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => triggerTextDownload(`${data.name.replace(/\s+/g, "_")}_backup.json`, JSON.stringify({ data, template, themeColor, customSections, sectionLabels }, null, 2), "application/json")}
+                className={`py-2 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1.5 ${dark ? "border-slate-700 hover:border-slate-500" : "bg-white border-slate-200 hover:border-slate-400"}`}
+              >
+                <FileDown size={12} /> Export JSON
+              </button>
+              <label className={`py-2 rounded-xl border text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer ${dark ? "border-slate-700 hover:border-slate-500" : "bg-white border-slate-200 hover:border-slate-400"}`}>
+                <Upload size={12} /> Import JSON
+                <input type="file" accept=".json" className="hidden" onChange={handleJsonImport} />
+              </label>
+            </div>
+          </div>
+
+          {/* Custom Drag-and-Drop Sections */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold">Custom Sections (Drag to Reorder)</p>
+              <button
+                onClick={() => setCustomSections(prev => [...prev, { id: Date.now().toString(), title: "Projects", content: "" }])}
+                className="text-[11px] font-bold text-blue-600 flex items-center gap-1 hover:underline"
+              >
+                <Plus size={12} /> Add Section
+              </button>
+            </div>
+            {customSections.length === 0 && (
+              <p className="text-xs text-slate-500 text-center py-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                Add Projects, Volunteering, Publications, or References.
+              </p>
+            )}
+            {customSections.map((sec, idx) => (
+              <div
+                key={sec.id}
+                draggable
+                onDragStart={() => setDragIdx(idx)}
+                onDragOver={e => e.preventDefault()}
+                onDrop={() => {
+                  if (dragIdx === null || dragIdx === idx) return;
+                  setCustomSections(prev => {
+                    const arr = [...prev];
+                    const [moved] = arr.splice(dragIdx, 1);
+                    arr.splice(idx, 0, moved);
+                    return arr;
+                  });
+                  setDragIdx(null);
+                }}
+                className={`p-3 rounded-xl border space-y-2 ${dark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}
+              >
+                <div className="flex items-center gap-2">
+                  <GripVertical size={14} className="text-slate-400 cursor-grab shrink-0" />
+                  <input
+                    value={sec.title}
+                    placeholder="Section Title"
+                    onChange={e => setCustomSections(prev => prev.map(s => s.id === sec.id ? { ...s, title: e.target.value } : s))}
+                    className={`flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold ${inputCls}`}
+                  />
+                  <button onClick={() => setCustomSections(prev => prev.filter(s => s.id !== sec.id))} className="text-slate-400 hover:text-red-500">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                <textarea
+                  rows={3}
+                  value={sec.content}
+                  placeholder="Add details or bullet points..."
+                  onChange={e => setCustomSections(prev => prev.map(s => s.id === sec.id ? { ...s, content: e.target.value } : s))}
+                  className={`w-full px-2.5 py-1.5 rounded-lg border text-xs resize-none ${inputCls}`}
+                />
               </div>
             ))}
           </div>
-        </aside>
-
-        <main className={`flex-1 overflow-y-auto flex flex-col items-center ${d.canvas}`}>
-          <div className={`my-4 flex flex-wrap gap-2 ${d.toolbar} p-2.5 rounded-2xl shadow-xl sticky top-4 z-10 no-print border mx-4`}>
-            {CL_TEMPLATES.map(({id,label})=><button key={id} onClick={()=>setClTemplate(id)} className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase ${clTemplate===id?'bg-blue-600 text-white shadow-lg':`${d.muted}`}`}>{label}</button>)}
-            <PDFDownloadButton dark={dark} docId="cover-letter-document" label="Download PDF"/>
-            <button onClick={()=>window.print()} className={`${dark?'bg-slate-700 text-slate-200':'bg-black text-white'} hover:bg-blue-600 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase flex items-center gap-1.5`}><Printer size={12}/> Print</button>
-          </div>
-          <div className="w-full flex justify-center origin-top scale-[0.5] lg:scale-[0.75] xl:scale-100 mb-[-380px] lg:mb-[-100px] xl:mb-0 print:scale-100 print:m-0 pb-4">
-            <CoverLetterRenderer data={data} template={clTemplate} themeColor={themeColor} photo={photo}/>
-          </div>
-        </main>
-      </div>
-
-      {/* Mobile Cover Letter */}
-      <div className="md:hidden flex flex-col flex-1 overflow-hidden">
-        <div className={`flex items-center justify-between px-3 py-2 border-b no-print ${dark?'bg-slate-900 border-slate-700':'bg-white border-slate-200'}`}>
-          <button onClick={()=>setView("editor")} className={`flex items-center gap-1 ${d.muted} font-bold text-xs`}><ArrowLeft size={14}/> Resume</button>
-          <span className="text-sm font-black text-blue-600">Cover Letter</span>
-          <div className="flex items-center gap-2">
-            <PDFDownloadButton dark={dark} docId="cover-letter-document" label="PDF"/>
-            <button onClick={()=>setDark(!dark)} className={`p-1.5 rounded-lg border ${dark?'border-slate-700 text-yellow-400':'border-slate-200 text-slate-500'}`}>{dark?<Sun size={13}/>:<Moon size={13}/>}</button>
-          </div>
         </div>
+      )}
+    </div>
+  );
 
-        <div className={`flex border-b no-print ${dark?'bg-slate-900 border-slate-700':'bg-white border-slate-200'}`}>
-          {[{id:"form",label:"✏️ Edit"},{id:"preview",label:"👁 Preview"}].map(tab=>(
-            <button key={tab.id} onClick={()=>setMobileTab(tab.id as any)}
-              className={`flex-1 py-2.5 text-[10px] font-black uppercase border-b-2 ${mobileTab===tab.id?'border-blue-600 text-blue-600':(dark?'border-transparent text-slate-500':'border-transparent text-slate-400')}`}>
+  // ── IMPORT MODAL ───────────────────────────────────────────────────────────
+  const ImportModal = showImportModal ? (
+    <div className="fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className={`w-full max-w-lg rounded-2xl border p-6 space-y-4 shadow-2xl ${dark ? "bg-slate-900 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"}`}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-black">Import from LinkedIn or Existing Resume</h3>
+          <button onClick={() => setShowImportModal(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        </div>
+        <p className="text-xs text-slate-500">Paste text from your LinkedIn profile or old resume document. Contact details, education, and bullet points will be extracted automatically.</p>
+        <textarea
+          rows={7}
+          value={importText}
+          onChange={e => setImportText(e.target.value)}
+          placeholder="Paste your profile or resume text here..."
+          className={`w-full p-3 rounded-xl border text-xs resize-none focus:outline-none ${inputCls}`}
+        />
+        <div className="flex justify-end gap-2">
+          <button onClick={() => setShowImportModal(false)} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500">Cancel</button>
+          <button onClick={parseRawResumeText} disabled={!importText.trim()} className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold">
+            Parse & Open Editor
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const ToastBanner = toast ? (
+    <div className="fixed bottom-5 right-5 z-[110] bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs font-bold flex items-center gap-2">
+      <Check size={14} className="text-emerald-400" /> {toast}
+    </div>
+  ) : null;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1. LANDING PAGE
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (view === "landing") {
+    const filteredTemplates = galleryCategory === "all"
+      ? RESUME_TEMPLATES
+      : RESUME_TEMPLATES.filter(t => t.category === galleryCategory);
+    const activePreviewExample = ROLE_EXAMPLES[heroRoleKey] || ROLE_EXAMPLES.marketing;
+
+    return (
+      <div className={`min-h-screen transition-colors ${dark ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900"}`}>
+        {ImportModal}
+        {ToastBanner}
+
+        {restorePrompt && (
+          <div className="bg-blue-600 text-white px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-3">
+            <Clock size={14} />
+            <span>You have an auto-saved resume draft in this browser.</span>
+            <button onClick={restoreDraft} className="underline font-bold">Continue Editing</button>
+            <button onClick={() => setRestorePrompt(false)} className="opacity-75 hover:opacity-100"><X size={14} /></button>
+          </div>
+        )}
+
+        {/* Sticky Navigation */}
+        <nav className={`sticky top-0 z-50 border-b backdrop-blur-md ${dark ? "bg-slate-950/90 border-slate-800" : "bg-white/90 border-slate-200"}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 font-black text-lg tracking-tight">
+              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center"><FileText size={16} /></div>
+              <span>Bosco<span className="text-blue-600">Resume</span></span>
+            </div>
+            <div className="hidden md:flex items-center gap-7 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <a href="#how-it-works" className="hover:text-blue-600 transition-colors">How It Works</a>
+              <a href="#templates" className="hover:text-blue-600 transition-colors">Templates</a>
+              <a href="#features" className="hover:text-blue-600 transition-colors">Features</a>
+              <a href="#formats" className="hover:text-blue-600 transition-colors">Resume Formats</a>
+              <a href="#faq" className="hover:text-blue-600 transition-colors">FAQ</a>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <button onClick={() => setDark(!dark)} title="Toggle theme" className={`p-2 rounded-xl border ${dark ? "border-slate-700 text-amber-400" : "border-slate-200 text-slate-600"}`}>
+                {dark ? <Sun size={15} /> : <Moon size={15} />}
+              </button>
+              <button onClick={() => setView("cover-letter")} className="hidden sm:inline-flex px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-blue-500 transition-colors">
+                Cover Letter
+              </button>
+              <button onClick={() => setView("editor")} className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-colors">
+                Build My Resume
+              </button>
+            </div>
+          </div>
+        </nav>
+
+        {/* Hero Section with Floating Resumes */}
+        <header className="relative overflow-hidden border-b border-slate-100 dark:border-slate-800/80">
+          <div className="max-w-7xl mx-auto px-4 sm:px-8 py-16 lg:py-24 grid lg:grid-cols-12 gap-12 items-center">
+            <div className="lg:col-span-6 space-y-6 text-center lg:text-left">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800">
+                <Sparkles size={13} /> ATS-Friendly Resume & Cover Letter Studio
+              </div>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.08]">
+                Build a clear, professional resume <span className="text-blue-600">in minutes.</span>
+              </h1>
+              <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 leading-relaxed max-w-xl mx-auto lg:mx-0">
+                Pick a recruiter-tested template, tailor your bullet points to any job description with real keyword matching, and export clean PDF or ATS-ready plain text—directly in your browser with no paywalls.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2">
+                <button onClick={() => setView("editor")} className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition-all">
+                  Create Your Resume <ChevronRight size={16} />
+                </button>
+                <button onClick={() => setShowImportModal(true)} className={`w-full sm:w-auto px-6 py-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-colors ${dark ? "border-slate-700 hover:border-blue-500 bg-slate-900" : "border-slate-300 hover:border-blue-600 bg-white"}`}>
+                  <Upload size={15} /> Import Existing Resume
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2 pt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                <span className="flex items-center gap-1.5"><CheckCircle size={14} className="text-emerald-500" /> Clean PDF &amp; ATS TXT Export</span>
+                <span className="flex items-center gap-1.5"><CheckCircle size={14} className="text-emerald-500" /> Matching Cover Letters</span>
+                <span className="flex items-center gap-1.5"><CheckCircle size={14} className="text-emerald-500" /> Private Local Auto-Save</span>
+              </div>
+            </div>
+
+            {/* Floating Resumes Composition */}
+            <div className="lg:col-span-6 relative flex justify-center items-center min-h-[360px]">
+              <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/10 via-indigo-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
+              <div className="relative flex items-center justify-center">
+                <div className="hidden sm:block -mr-14 -rotate-6 translate-y-6 animate-float-slow">
+                  <FloatingResumeCard example={ROLE_EXAMPLES.marketing} accent="#0f766e" />
+                </div>
+                <div className="relative z-10 animate-float">
+                  <FloatingResumeCard example={ROLE_EXAMPLES.engineer} accent="#1e40af" />
+                </div>
+                <div className="hidden xl:block -ml-14 rotate-6 translate-y-8 animate-float-delayed">
+                  <FloatingResumeCard example={ROLE_EXAMPLES.analyst} accent="#0f172a" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* 3-Step How It Works */}
+        <section id="how-it-works" className={`py-20 px-4 sm:px-8 ${dark ? "bg-slate-900/50" : "bg-slate-50"}`}>
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center max-w-2xl mx-auto mb-14">
+              <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">Simple Workflow</p>
+              <h2 className="text-3xl sm:text-4xl font-black tracking-tight">Create your resume in three straightforward steps</h2>
+            </div>
+            <div className="grid md:grid-cols-3 gap-6">
+              {[
+                { step: "01", title: "Pick a Layout", desc: "Start from 8 clean templates—from single-column ATS minimal to executive sidebar—and adjust fonts, spacing, and accent colors.", icon: <Layout size={20} /> },
+                { step: "02", title: "Fill & Tailor Content", desc: "Use role starter examples, the quick bullet bank, grammar fixes, and real job-description keyword matching to sharpen every section.", icon: <PenTool size={20} /> },
+                { step: "03", title: "Export & Apply", desc: "Download a sharp A4 PDF for hiring managers, a plain-text (.txt) file for strict portals, or pair it with a matching cover letter.", icon: <Download size={20} /> },
+              ].map(item => (
+                <div key={item.step} className={`p-7 rounded-2xl border space-y-4 ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600/10 text-blue-600 flex items-center justify-center">{item.icon}</div>
+                    <span className="text-xs font-black text-slate-300 dark:text-slate-700">{item.step}</span>
+                  </div>
+                  <h3 className="text-lg font-black">{item.title}</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Interactive Template Showcase */}
+        <section id="templates" className="py-20 px-4 sm:px-8">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">Interactive Gallery</p>
+                <h2 className="text-3xl sm:text-4xl font-black tracking-tight">Templates built for recruiters and ATS</h2>
+                <p className="text-sm text-slate-500 mt-2">Preview any template with a sample profession below, then click to start editing.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(ROLE_EXAMPLES).map(([k, ex]) => (
+                  <button
+                    key={k}
+                    onClick={() => setHeroRoleKey(k)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${heroRoleKey === k ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900" : (dark ? "border-slate-700 text-slate-300" : "border-slate-200 text-slate-600 hover:border-slate-400")}`}
+                  >
+                    {ex.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Category filter */}
+            <div className="flex flex-wrap gap-2 mb-8">
+              {[
+                { id: "all", label: "All Templates" },
+                { id: "corporate", label: "Corporate & Executive" },
+                { id: "tech", label: "ATS & Technical" },
+                { id: "modern", label: "Modern" },
+                { id: "creative", label: "Creative & Editorial" },
+              ].map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setGalleryCategory(cat.id)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${galleryCategory === cat.id ? "bg-blue-600 text-white" : (dark ? "bg-slate-800 text-slate-300" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Full A4 Mini Previews with Profile Pictures */}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {filteredTemplates.map(t => (
+                <div
+                  key={t.id}
+                  onClick={() => {
+                    setTemplate(t.id);
+                    setData(activePreviewExample.data);
+                    setPhoto(activePreviewExample.photo);
+                    setView("editor");
+                  }}
+                  className={`group cursor-pointer rounded-2xl border p-3 transition-all hover:shadow-xl hover:border-blue-500 ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}
+                >
+                  <div className={`aspect-[210/297] rounded-xl overflow-hidden relative flex items-start justify-center ${dark ? "bg-slate-800" : "bg-slate-100"}`}>
+                    <div className="origin-top scale-[0.30] sm:scale-[0.31] lg:scale-[0.29] xl:scale-[0.33] pointer-events-none shadow-md">
+                      <ResumeRenderer
+                        data={activePreviewExample.data}
+                        template={t.id}
+                        themeColor={themeColor}
+                        photo={activePreviewExample.photo}
+                        showPhoto={true}
+                        customSections={[]}
+                        showQR={false}
+                        labels={DEFAULT_LABELS}
+                        fontStack={fontStack}
+                        densityId="balanced"
+                      />
+                    </div>
+                    <div className="absolute inset-0 bg-slate-950/0 group-hover:bg-slate-950/35 transition-colors flex items-center justify-center">
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-lg">
+                        Use This Template
+                      </span>
+                    </div>
+                  </div>
+                  <div className="pt-3 px-1">
+                    <p className="text-sm font-black group-hover:text-blue-600 transition-colors">{t.name}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{t.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Core Capabilities */}
+        <section id="features" className={`py-20 px-4 sm:px-8 border-y ${dark ? "bg-slate-900/40 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center max-w-2xl mx-auto mb-14">
+              <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">Everything You Actually Need</p>
+              <h2 className="text-3xl sm:text-4xl font-black tracking-tight">Thoughtful tools without unnecessary clutter</h2>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[
+                { icon: <Target size={18} />, title: "Real Job-Description ATS Check", desc: "Paste any job posting to extract its real keywords, see what your resume already covers, and add missing skills with one click." },
+                { icon: <Type size={18} />, title: "Custom Fonts, Colors & Spacing", desc: "Switch between Sans, Serif, Humanist, or Technical fonts and compact-to-spacious page density so your resume fits cleanly on one page." },
+                { icon: <Wand2 size={18} />, title: "Bullet Bank & Proofreading", desc: "Avoid blank-page syndrome with role starter templates, action-verb bullet prompts, and instant fixes for typos or passive phrases." },
+                { icon: <FileText size={18} />, title: "Matching Cover Letter Studio", desc: "Sync your contact details and role automatically into 8 coordinated cover letter layouts with a one-click role-tailored draft." },
+                { icon: <FileDown size={18} />, title: "PDF, Plain Text & JSON Backup", desc: "Export crisp A4 PDFs, ATS-safe .txt files for strict portals, and portable .json backups you can re-import on any device." },
+                { icon: <ShieldCheck size={18} />, title: "Private & Browser-Saved", desc: "Work directly in your browser with automatic saving, undo/redo history, and multiple named resume versions for different roles." },
+              ].map((feat, i) => (
+                <div key={i} className={`p-6 rounded-2xl border space-y-3 ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+                  <div className="w-10 h-10 rounded-xl bg-blue-600/10 text-blue-600 flex items-center justify-center">{feat.icon}</div>
+                  <h3 className="text-base font-black">{feat.title}</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{feat.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Resume Formats Guide (Inspired by ResumeBuilder.com educational section) */}
+        <section id="formats" className="py-20 px-4 sm:px-8">
+          <div className="max-w-6xl mx-auto">
+            <div className="max-w-2xl mb-12">
+              <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">Career Guidance</p>
+              <h2 className="text-3xl sm:text-4xl font-black tracking-tight">How to choose the right resume format</h2>
+              <p className="text-sm text-slate-500 mt-2">Select a structure that highlights your strongest qualifications for the role you are targeting.</p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-6">
+              {[
+                {
+                  title: "Chronological Format",
+                  bestFor: "Steady career progression in one field",
+                  desc: "Places your work history front and center in reverse-chronological order. Preferred by most recruiters and applicant tracking systems.",
+                  recTemplate: "minimal",
+                  recName: "Try ATS Minimal",
+                },
+                {
+                  title: "Combination (Hybrid) Format",
+                  bestFor: "Specialists, technical roles & managers",
+                  desc: "Balances a prominent skills and achievements snapshot with a clear work timeline so employers see both capabilities and track record.",
+                  recTemplate: "richard",
+                  recName: "Try Executive Sidebar",
+                },
+                {
+                  title: "Functional / Skills-First",
+                  bestFor: "Career changers & recent graduates",
+                  desc: "Leads with transferable skills, projects, and education when your strongest proof points sit outside traditional job titles.",
+                  recTemplate: "grid",
+                  recName: "Try Two-Column Grid",
+                },
+              ].map(fmt => (
+                <div key={fmt.title} className={`p-6 rounded-2xl border flex flex-col justify-between gap-5 ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+                  <div className="space-y-3">
+                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                      Best for: {fmt.bestFor}
+                    </span>
+                    <h3 className="text-lg font-black">{fmt.title}</h3>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{fmt.desc}</p>
+                  </div>
+                  <button
+                    onClick={() => { setTemplate(fmt.recTemplate); setView("editor"); }}
+                    className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+                  >
+                    {fmt.recName} <ChevronRight size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Cover Letter Callout */}
+        <section className="px-4 sm:px-8 pb-20">
+          <div className="max-w-6xl mx-auto rounded-3xl bg-slate-900 text-white p-8 sm:p-12 flex flex-col lg:flex-row items-center justify-between gap-8">
+            <div className="space-y-3 max-w-xl text-center lg:text-left">
+              <p className="text-xs font-black uppercase tracking-widest text-blue-400">Complete Application Package</p>
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight">Pair your resume with a matching cover letter</h2>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Keep fonts, accent colors, and contact details consistent across both documents. Draft a role-specific letter in seconds and export it as a clean PDF or plain text.
+              </p>
+            </div>
+            <button onClick={() => setView("cover-letter")} className="px-7 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm flex items-center gap-2 shrink-0 transition-colors">
+              <FileText size={16} /> Open Cover Letter Builder
+            </button>
+          </div>
+        </section>
+
+        {/* FAQ Accordion */}
+        <section id="faq" className={`py-20 px-4 sm:px-8 border-t ${dark ? "bg-slate-900/40 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
+          <div className="max-w-3xl mx-auto">
+            <div className="text-center mb-12">
+              <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">Common Questions</p>
+              <h2 className="text-3xl font-black tracking-tight">Frequently Asked Questions</h2>
+            </div>
+            <div className="space-y-3">
+              {FAQ_ITEMS.map((item, i) => (
+                <div key={i} className={`rounded-2xl border overflow-hidden ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+                  <button
+                    onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                    className="w-full px-6 py-4 text-left flex items-center justify-between gap-4 font-bold text-sm"
+                  >
+                    <span>{item.q}</span>
+                    <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${openFaq === i ? "rotate-180" : ""}`} />
+                  </button>
+                  {openFaq === i && (
+                    <div className="px-6 pb-5 text-sm text-slate-600 dark:text-slate-400 leading-relaxed border-t border-slate-100 dark:border-slate-800 pt-3">
+                      {item.a}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className={`py-10 px-4 sm:px-8 border-t ${dark ? "border-slate-800 bg-slate-950" : "border-slate-200 bg-white"}`}>
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <span className="font-black text-slate-900 dark:text-white">BoscoResume</span>
+              <a href="mailto:boscohabarugira30@gmail.com" className="hover:text-blue-600 flex items-center gap-1"><Mail size={12} /> boscohabarugira30@gmail.com</a>
+              <a href="https://linkedin.com/in/bosco-habarugira" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 flex items-center gap-1"><Linkedin size={12} /> LinkedIn</a>
+            </div>
+            <div className="flex items-center gap-1">
+              Built with <Heart size={12} className="text-red-500 fill-red-500" /> by <span className="font-bold text-slate-900 dark:text-white">Bosco Habarugira</span>
+            </div>
+          </div>
+        </footer>
+
+        <style>{`
+          @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-10px); } }
+          .animate-float { animation: float 5s ease-in-out infinite; }
+          .animate-float-slow { animation: float 6.5s ease-in-out infinite 0.8s; }
+          .animate-float-delayed { animation: float 6s ease-in-out infinite 1.6s; }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2. RESUME EDITOR
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (view === "editor") {
+    return (
+      <div className={`flex flex-col h-screen overflow-hidden ${dark ? "bg-slate-950 text-slate-100" : "bg-slate-100 text-slate-900"}`}>
+        {ImportModal}
+        {ToastBanner}
+
+        {/* Top Studio Bar */}
+        <header className={`h-14 px-3 sm:px-5 border-b flex items-center justify-between gap-2 shrink-0 no-print ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button onClick={() => setView("landing")} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500" title="Back to home">
+              <ArrowLeft size={16} />
+            </button>
+            <div className="hidden sm:block">
+              <p className="text-sm font-black leading-none">Resume Studio</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {lastSaved ? `Auto-saved ${lastSaved.toLocaleTimeString()}` : "Auto-saves locally"}
+              </p>
+            </div>
+            <div className="flex items-center gap-1 ml-1">
+              <button onClick={undo} disabled={!past.length} title="Undo" className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30"><Undo2 size={15} /></button>
+              <button onClick={redo} disabled={!future.length} title="Redo" className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30"><Redo2 size={15} /></button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Version Saves Dropdown */}
+            <div className="relative">
+              <button onClick={() => setSavesOpen(!savesOpen)} className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 ${dark ? "border-slate-700 hover:border-blue-500" : "border-slate-200 hover:border-blue-500"}`}>
+                <FolderOpen size={13} /> <span className="hidden md:inline">Versions</span>
+                {saves.length > 0 && <span className="px-1.5 py-0.2 bg-blue-600 text-white rounded-full text-[10px]">{saves.length}</span>}
+              </button>
+              {savesOpen && (
+                <div className={`absolute right-0 top-11 w-72 rounded-2xl border shadow-2xl p-4 z-50 space-y-3 ${dark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black">Saved Versions</span>
+                    <button onClick={() => setSavesOpen(false)}><X size={14} className="text-slate-400" /></button>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input value={saveName} onChange={e => setSaveName(e.target.value)} placeholder="e.g. Data Analyst v2" className={`flex-1 px-2.5 py-1.5 rounded-lg border text-xs ${inputCls}`} />
+                    <button onClick={saveVersion} className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold"><Save size={12} /></button>
+                  </div>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {saves.length === 0 && <p className="text-[11px] text-slate-400 text-center py-3">No saved versions yet.</p>}
+                    {saves.map(s => (
+                      <div key={s.id} className={`flex items-center gap-2 p-2 rounded-xl border text-xs ${dark ? "border-slate-800 bg-slate-800/50" : "border-slate-100 bg-slate-50"}`}>
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.themeColor }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold truncate">{s.name}</p>
+                          <p className="text-[10px] text-slate-400">{new Date(s.savedAt).toLocaleDateString()}</p>
+                        </div>
+                        <button onClick={() => { setData(s.data); setTemplate(s.template); setThemeColor(s.themeColor); setFontId(s.fontFamily || "sans"); setDensityId(s.density || "balanced"); setSavesOpen(false); notify(`Loaded "${s.name}"`); }} className="text-blue-600 font-bold hover:underline">Load</button>
+                        <button onClick={() => deleteVersion(s.id)} className="text-slate-400 hover:text-red-500"><Trash2 size={12} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => setView("cover-letter")} className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold ${dark ? "border-slate-700 hover:border-blue-500" : "border-slate-200 hover:border-blue-500"}`}>
+              <FileText size={13} /> Cover Letter
+            </button>
+            <button
+              onClick={() => {
+                triggerTextDownload(`${data.name.replace(/\s+/g, "_")}_ATS.txt`, buildPlainTextResume(data, sectionLabels, customSections));
+                notify("Downloaded ATS Plain Text (.txt)");
+              }}
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold ${dark ? "border-slate-700 hover:border-blue-500" : "border-slate-200 hover:border-blue-500"}`}
+            >
+              <BookOpen size={13} /> TXT
+            </button>
+            <button onClick={() => exportCleanPDF("resume-document")} className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5">
+              <Download size={13} /> PDF
+            </button>
+            <button onClick={() => setDark(!dark)} className={`p-2 rounded-lg border ${dark ? "border-slate-700 text-amber-400" : "border-slate-200 text-slate-600"}`}>
+              {dark ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+          </div>
+        </header>
+
+        {/* Mobile View Switcher */}
+        <div className={`md:hidden grid grid-cols-3 border-b no-print ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+          {[
+            { id: "edit", label: "Edit" },
+            { id: "preview", label: "Preview" },
+            { id: "tools", label: `Review (${checklist.passed}/${checklist.total})` },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setMobilePane(tab.id as any)} className={`py-2.5 text-xs font-bold border-b-2 ${mobilePane === tab.id ? "border-blue-600 text-blue-600" : "border-transparent text-slate-400"}`}>
               {tab.label}
             </button>
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          {mobileTab === "form" && (
-            <div className={`p-4 flex flex-col gap-3 ${dark?'bg-slate-900':'bg-white'}`}>
-              {/* Template picker */}
-              <div className="flex gap-2 overflow-x-auto pb-2" style={{scrollbarWidth:'none'}}>
-                {CL_TEMPLATES.map(({id,label})=>(
-                  <button key={id} onClick={()=>setClTemplate(id)}
-                    className={`flex-none px-3 py-1.5 rounded-lg text-[9px] font-black uppercase whitespace-nowrap ${clTemplate===id?'bg-blue-600 text-white':'bg-slate-100 text-slate-500'}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {/* Color */}
-              <div className="flex gap-2 flex-wrap">
-                {COLORS.map(c=><button key={c} onClick={()=>setThemeColor(c)} className={`w-7 h-7 rounded-full border-2 ${themeColor===c?'scale-125 border-blue-500':'border-transparent'}`} style={{backgroundColor:c}}/>)}
-              </div>
-              {/* Fields */}
-              <div className="grid gap-2">
-                {([["Hiring Manager","hiringManager"],["Company Name","companyName"],["Job Title","jobTitle"],["Full Name","name"],["Email","email"],["Phone","phone"],["Location","location"]] as [string,string][]).map(([ph,k])=>(
-                  <input key={k} placeholder={ph} className={`w-full p-2.5 rounded-xl border text-sm ${d.input}`} value={(data as any)[k]} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update(k,e.target.value)}/>
-                ))}
-                {([["Opening","openingParagraph"],["Body 1","bodyParagraph1"],["Body 2","bodyParagraph2"],["Closing","closingParagraph"]] as [string,string][]).map(([label,k])=>(
-                  <div key={k}>
-                    <p className={`text-[9px] font-black uppercase ${d.muted} mb-1`}>{label}</p>
-                    <textarea className={`w-full p-2.5 rounded-xl border text-sm resize-none ${d.input}`} rows={3} value={(data as any)[k]} onChange={(e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>)=>update(k,e.target.value)}/>
-                  </div>
-                ))}
-              </div>
+        {/* Main 3-Column Desktop / Tabbed Mobile Workspace */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Editor Panel */}
+          <aside className={`${mobilePane === "edit" ? "flex" : "hidden"} md:flex flex-col w-full md:w-[370px] lg:w-[400px] border-r overflow-y-auto p-5 shrink-0 no-print ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+            {renderEditorControls()}
+          </aside>
+
+          {/* Center Live A4 Canvas */}
+          <main className={`${mobilePane === "preview" ? "flex" : "hidden"} md:flex flex-1 flex-col items-center overflow-y-auto py-6 px-4 ${dark ? "bg-slate-950" : "bg-slate-200/70"}`}>
+            <div className="origin-top scale-[0.43] sm:scale-[0.65] lg:scale-[0.72] xl:scale-[0.88] 2xl:scale-100 shadow-2xl rounded-sm transition-transform print:scale-100 print:shadow-none">
+              <ResumeRenderer
+                data={data}
+                template={template}
+                themeColor={themeColor}
+                photo={photo}
+                showPhoto={showPhoto}
+                customSections={customSections}
+                showQR={showQR}
+                labels={sectionLabels}
+                fontStack={fontStack}
+                densityId={densityId}
+              />
             </div>
-          )}
-          {mobileTab === "preview" && (
-            <div className={`flex flex-col items-center py-4 ${d.canvas}`}>
-              <div className="w-full flex justify-center origin-top scale-[0.38] mb-[-350px]">
-                <CoverLetterRenderer data={data} template={clTemplate} themeColor={themeColor} photo={photo}/>
+          </main>
+
+          {/* Right Review & ATS Drawer */}
+          <aside className={`${mobilePane === "tools" ? "flex w-full" : "hidden"} md:flex flex-col border-l shrink-0 no-print transition-all ${toolsOpen ? "md:w-[320px]" : "md:w-12"} ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+            <button
+              onClick={() => setToolsOpen(!toolsOpen)}
+              className={`hidden md:flex items-center justify-between px-3.5 py-3 border-b text-xs font-bold ${dark ? "border-slate-800 bg-slate-800/40" : "border-slate-200 bg-slate-50"}`}
+            >
+              {toolsOpen ? (
+                <>
+                  <span className="flex items-center gap-1.5"><Sparkles size={13} className="text-blue-600" /> Review &amp; ATS Tools</span>
+                  <ChevronRight size={15} className="text-slate-400" />
+                </>
+              ) : (
+                <Sparkles size={16} className="text-blue-600 mx-auto" />
+              )}
+            </button>
+            {(toolsOpen || mobilePane === "tools") && (
+              <div className="flex-1 overflow-hidden">
+                <ReviewDrawer data={data} onUpdate={update} dark={dark} />
               </div>
-            </div>
-          )}
+            )}
+          </aside>
         </div>
       </div>
+    );
+  }
 
-      <style>{`@page{margin:12mm 12mm 12mm 12mm!important;size:A4 portrait}@media print{.no-print{display:none!important}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}body{background:white!important;margin:0!important;padding:0!important}.text-slate-400,.text-slate-300{color:#374151!important}.text-gray-400,.text-gray-300{color:#374151!important}[class*="text-slate-4"],[class*="text-slate-3"]{color:#374151!important}html{height:auto!important;overflow:hidden!important}body>*{page-break-after:avoid!important}}`}</style>
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 3. COVER LETTER STUDIO
+  // ═══════════════════════════════════════════════════════════════════════════
+  return (
+    <div className={`flex flex-col h-screen overflow-hidden ${dark ? "bg-slate-950 text-slate-100" : "bg-slate-100 text-slate-900"}`}>
+      {ToastBanner}
+      <header className={`h-14 px-4 border-b flex items-center justify-between gap-2 shrink-0 no-print ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setView("editor")} className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-blue-600">
+            <ArrowLeft size={15} /> Back to Resume
+          </button>
+          <span className="text-slate-300 dark:text-slate-700">|</span>
+          <span className="text-sm font-black">Cover Letter Studio</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={generateCoverLetterDraft} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5">
+            <Wand2 size={13} /> Tailor Draft
+          </button>
+          <button
+            onClick={() => {
+              const txt = `${data.name}\n${data.role}\n${data.email} | ${data.phone} | ${data.location}\n\n${data.date}\n\nDear ${data.hiringManager},\nRe: ${data.jobTitle} at ${data.companyName}\n\n${data.openingParagraph}\n\n${data.bodyParagraph1}\n\n${data.bodyParagraph2}\n\n${data.closingParagraph}\n\nSincerely,\n${data.name}\n`;
+              triggerTextDownload(`${data.name.replace(/\s+/g, "_")}_Cover_Letter.txt`, txt);
+              notify("Downloaded Cover Letter (.txt)");
+            }}
+            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold ${dark ? "border-slate-700" : "border-slate-200"}`}
+          >
+            TXT
+          </button>
+          <button onClick={() => exportCleanPDF("cover-letter-document")} className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5">
+            <Download size={13} /> PDF
+          </button>
+          <button onClick={() => setDark(!dark)} className={`p-2 rounded-lg border ${dark ? "border-slate-700 text-amber-400" : "border-slate-200 text-slate-600"}`}>
+            {dark ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
+        </div>
+      </header>
+
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <aside className={`w-full md:w-[400px] border-r overflow-y-auto p-5 space-y-4 shrink-0 no-print ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
+          <div>
+            <p className="text-[11px] font-bold mb-2">Cover Letter Layout</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {CL_TEMPLATES.map(t => (
+                <button key={t.id} onClick={() => setClTemplate(t.id)} className={`py-1.5 rounded-lg text-[10px] font-bold border ${clTemplate === t.id ? "bg-blue-600 text-white border-blue-600" : (dark ? "border-slate-700 text-slate-300" : "border-slate-200 text-slate-600")}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-[11px] font-bold mb-1">Hiring Manager</label>
+              <input value={data.hiringManager} onChange={e => update("hiringManager", e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-xs ${inputCls}`} />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold mb-1">Company Name</label>
+              <input value={data.companyName} onChange={e => update("companyName", e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-xs ${inputCls}`} />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold mb-1">Target Role</label>
+              <input value={data.jobTitle} onChange={e => update("jobTitle", e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-xs ${inputCls}`} />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold mb-1">Date</label>
+              <input value={data.date} onChange={e => update("date", e.target.value)} className={`w-full px-3 py-2 rounded-xl border text-xs ${inputCls}`} />
+            </div>
+          </div>
+
+          {([
+            ["Opening Paragraph", "openingParagraph"],
+            ["Experience & Value", "bodyParagraph1"],
+            ["Company Alignment", "bodyParagraph2"],
+            ["Closing Call to Action", "closingParagraph"],
+          ] as [string, keyof ResumeData][]).map(([lbl, k]) => (
+            <div key={k}>
+              <label className="block text-[11px] font-bold mb-1">{lbl}</label>
+              <textarea rows={3} value={data[k]} onChange={e => update(k, e.target.value)} className={`w-full p-2.5 rounded-xl border text-xs leading-relaxed resize-y focus:outline-none ${inputCls}`} />
+              <WordCountBadge text={data[k]} dark={dark} />
+            </div>
+          ))}
+        </aside>
+
+        <main className={`flex-1 overflow-y-auto flex justify-center py-6 px-4 ${dark ? "bg-slate-950" : "bg-slate-200/70"}`}>
+          <div className="origin-top scale-[0.43] sm:scale-[0.65] lg:scale-[0.75] xl:scale-[0.9] 2xl:scale-100 shadow-2xl">
+            <CoverLetterRenderer data={data} template={clTemplate} themeColor={themeColor} photo={photo} showPhoto={showPhoto} fontStack={fontStack} />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
