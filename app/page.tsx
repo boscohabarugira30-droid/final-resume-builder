@@ -1472,6 +1472,33 @@ export default function ResumeBuilderApp() {
     } catch {}
   }, []);
 
+  // Accept direct links (?view=editor | ?view=cover-letter) and personalized Career Resource drafts
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const requestedView = params.get("view");
+      if (requestedView === "editor" || requestedView === "cover-letter") {
+        setView(requestedView);
+      }
+      if (params.get("handoff") === "resource") {
+        const raw = localStorage.getItem("bosco_resource_handoff");
+        if (raw) {
+          const handoff = JSON.parse(raw);
+          if (handoff.data) {
+            setData((prev) => ({ ...prev, ...handoff.data }));
+          }
+          if (handoff.template) setTemplate(handoff.template);
+          if (handoff.clTemplate) setClTemplate(handoff.clTemplate);
+          if (handoff.targetView === "editor" || handoff.targetView === "cover-letter") {
+            setView(handoff.targetView);
+          }
+          localStorage.removeItem("bosco_resource_handoff");
+          notify(`Loaded personalized draft from ${handoff.sourceTitle || "Career Resources"}`);
+        }
+      }
+    } catch {}
+  }, [notify]);
+
   // Auto-save every 5 seconds while editing
   useEffect(() => {
     if (view === "landing") return;
@@ -1916,6 +1943,7 @@ export default function ResumeBuilderApp() {
               <span>Bosco<span className="text-blue-600">Resume</span></span>
             </div>
             <div className="hidden md:flex items-center gap-7 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <a href="/resources" className="text-blue-600 font-bold hover:underline transition-colors">Career Resources</a>
               <a href="#how-it-works" className="hover:text-blue-600 transition-colors">How It Works</a>
               <a href="#templates" className="hover:text-blue-600 transition-colors">Templates</a>
               <a href="#features" className="hover:text-blue-600 transition-colors">Features</a>
@@ -1926,6 +1954,9 @@ export default function ResumeBuilderApp() {
               <button onClick={() => setDark(!dark)} title="Toggle theme" className={`p-2 rounded-xl border ${dark ? "border-slate-700 text-amber-400" : "border-slate-200 text-slate-600"}`}>
                 {dark ? <Sun size={15} /> : <Moon size={15} />}
               </button>
+              <a href="/resources" className="md:hidden px-3 py-2 rounded-xl text-xs font-bold text-blue-600">
+                Resources
+              </a>
               <button onClick={() => setView("cover-letter")} className="hidden sm:inline-flex px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 hover:border-blue-500 transition-colors">
                 Cover Letter
               </button>
@@ -1941,21 +1972,21 @@ export default function ResumeBuilderApp() {
           <div className="max-w-7xl mx-auto px-4 sm:px-8 py-16 lg:py-24 grid lg:grid-cols-12 gap-12 items-center">
             <div className="lg:col-span-6 space-y-6 text-center lg:text-left">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800">
-                <Sparkles size={13} /> ATS-Friendly Resume & Cover Letter Studio
+                <Sparkles size={13} /> Resume, Cover Letter &amp; Career Resources Studio
               </div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.08]">
                 Build a clear, professional resume <span className="text-blue-600">in minutes.</span>
               </h1>
               <p className="text-base sm:text-lg text-slate-600 dark:text-slate-400 leading-relaxed max-w-xl mx-auto lg:mx-0">
-                Pick a recruiter-tested template, tailor your bullet points to any job description with real keyword matching, and export clean PDF or ATS-ready plain text—directly in your browser with no paywalls.
+                Pick a clean, structured template, tailor your bullet points to any job description with real keyword matching, and export clean PDF or ATS-ready plain text—directly in your browser with no paywalls.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2">
                 <button onClick={() => setView("editor")} className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition-all">
                   Create Your Resume <ChevronRight size={16} />
                 </button>
-                <button onClick={() => setShowImportModal(true)} className={`w-full sm:w-auto px-6 py-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-colors ${dark ? "border-slate-700 hover:border-blue-500 bg-slate-900" : "border-slate-300 hover:border-blue-600 bg-white"}`}>
-                  <Upload size={15} /> Import Existing Resume
-                </button>
+                <a href="/resources" className={`w-full sm:w-auto px-6 py-3.5 rounded-xl border font-bold text-sm flex items-center justify-center gap-2 transition-colors ${dark ? "border-slate-700 hover:border-blue-500 bg-slate-900" : "border-slate-300 hover:border-blue-600 bg-white"}`}>
+                  <BookOpen size={15} /> Browse Examples &amp; Guides
+                </a>
               </div>
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2 pt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
                 <span className="flex items-center gap-1.5"><CheckCircle size={14} className="text-emerald-500" /> Clean PDF &amp; ATS TXT Export</span>
@@ -2014,7 +2045,7 @@ export default function ResumeBuilderApp() {
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
               <div>
                 <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">Interactive Gallery</p>
-                <h2 className="text-3xl sm:text-4xl font-black tracking-tight">Templates built for recruiters and ATS</h2>
+                <h2 className="text-3xl sm:text-4xl font-black tracking-tight">Templates for different roles and career stages</h2>
                 <p className="text-sm text-slate-500 mt-2">Preview any template with a sample profession below, then click to start editing.</p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -2035,7 +2066,7 @@ export default function ResumeBuilderApp() {
               {[
                 { id: "all", label: "All Templates" },
                 { id: "corporate", label: "Corporate & Executive" },
-                { id: "tech", label: "ATS & Technical" },
+                { id: "tech", label: "Minimal & Technical" },
                 { id: "modern", label: "Modern" },
                 { id: "creative", label: "Creative & Editorial" },
               ].map(cat => (
@@ -2102,11 +2133,11 @@ export default function ResumeBuilderApp() {
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {[
-                { icon: <Target size={18} />, title: "Real Job-Description ATS Check", desc: "Paste any job posting to extract its real keywords, see what your resume already covers, and add missing skills with one click." },
+                { icon: <Target size={18} />, title: "Job-Description Keyword Match", desc: "Paste any job posting to extract its real keywords, see what your resume already covers, and add skills you genuinely have with one click." },
                 { icon: <Type size={18} />, title: "Custom Fonts, Colors & Spacing", desc: "Switch between Sans, Serif, Humanist, or Technical fonts and compact-to-spacious page density so your resume fits cleanly on one page." },
                 { icon: <Wand2 size={18} />, title: "Bullet Bank & Proofreading", desc: "Avoid blank-page syndrome with role starter templates, action-verb bullet prompts, and instant fixes for typos or passive phrases." },
                 { icon: <FileText size={18} />, title: "Matching Cover Letter Studio", desc: "Sync your contact details and role automatically into 8 coordinated cover letter layouts with a one-click role-tailored draft." },
-                { icon: <FileDown size={18} />, title: "PDF, Plain Text & JSON Backup", desc: "Export crisp A4 PDFs, ATS-safe .txt files for strict portals, and portable .json backups you can re-import on any device." },
+                { icon: <FileDown size={18} />, title: "PDF, Plain Text & JSON Backup", desc: "Export crisp A4 PDFs, plain-text (.txt) files for strict portals, and portable .json backups you can re-import on any device." },
                 { icon: <ShieldCheck size={18} />, title: "Private & Browser-Saved", desc: "Work directly in your browser with automatic saving, undo/redo history, and multiple named resume versions for different roles." },
               ].map((feat, i) => (
                 <div key={i} className={`p-6 rounded-2xl border space-y-3 ${dark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"}`}>
@@ -2119,22 +2150,27 @@ export default function ResumeBuilderApp() {
           </div>
         </section>
 
-        {/* Resume Formats Guide (Inspired by ResumeBuilder.com educational section) */}
+        {/* Career Guidance & Resume Formats */}
         <section id="formats" className="py-20 px-4 sm:px-8">
           <div className="max-w-6xl mx-auto">
-            <div className="max-w-2xl mb-12">
-              <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">Career Guidance</p>
-              <h2 className="text-3xl sm:text-4xl font-black tracking-tight">How to choose the right resume format</h2>
-              <p className="text-sm text-slate-500 mt-2">Select a structure that highlights your strongest qualifications for the role you are targeting.</p>
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 max-w-full mb-12">
+              <div className="max-w-2xl">
+                <p className="text-xs font-black uppercase tracking-widest text-blue-600 mb-2">Career Guidance</p>
+                <h2 className="text-3xl sm:text-4xl font-black tracking-tight">How to choose the right resume format</h2>
+                <p className="text-sm text-slate-500 mt-2">Select a structure that highlights your strongest qualifications, or browse full role-specific examples in Career Resources.</p>
+              </div>
+              <a href="/resources" className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold shrink-0 transition-colors">
+                <BookOpen size={14} /> Explore All Examples &amp; Guides <ChevronRight size={14} />
+              </a>
             </div>
             <div className="grid md:grid-cols-3 gap-6">
               {[
                 {
                   title: "Chronological Format",
                   bestFor: "Steady career progression in one field",
-                  desc: "Places your work history front and center in reverse-chronological order. Preferred by most recruiters and applicant tracking systems.",
+                  desc: "Places your work history front and center in reverse-chronological order. Familiar to hiring managers and easy for most parsers to read.",
                   recTemplate: "minimal",
-                  recName: "Try ATS Minimal",
+                  recName: "Try Minimal Layout",
                 },
                 {
                   title: "Combination (Hybrid) Format",
@@ -2220,6 +2256,7 @@ export default function ResumeBuilderApp() {
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
             <div className="flex flex-wrap items-center justify-center gap-4">
               <span className="font-black text-slate-900 dark:text-white">BoscoResume</span>
+              <a href="/resources" className="hover:text-blue-600 font-semibold">Career Resources</a>
               <a href="mailto:boscohabarugira30@gmail.com" className="hover:text-blue-600 flex items-center gap-1"><Mail size={12} /> boscohabarugira30@gmail.com</a>
               <a href="https://linkedin.com/in/bosco-habarugira" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 flex items-center gap-1"><Linkedin size={12} /> LinkedIn</a>
             </div>
@@ -2301,6 +2338,9 @@ export default function ResumeBuilderApp() {
               )}
             </div>
 
+            <a href="/resources" className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold ${dark ? "border-slate-700 hover:border-blue-500" : "border-slate-200 hover:border-blue-500"}`}>
+              <BookOpen size={13} /> Examples
+            </a>
             <button onClick={() => setView("cover-letter")} className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold ${dark ? "border-slate-700 hover:border-blue-500" : "border-slate-200 hover:border-blue-500"}`}>
               <FileText size={13} /> Cover Letter
             </button>
@@ -2401,6 +2441,9 @@ export default function ResumeBuilderApp() {
           <span className="text-sm font-black">Cover Letter Studio</span>
         </div>
         <div className="flex items-center gap-2">
+          <a href="/resources" className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold ${dark ? "border-slate-700" : "border-slate-200"}`}>
+            <BookOpen size={13} /> Examples
+          </a>
           <button onClick={generateCoverLetterDraft} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5">
             <Wand2 size={13} /> Tailor Draft
           </button>
