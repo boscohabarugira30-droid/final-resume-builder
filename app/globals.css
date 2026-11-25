@@ -2,54 +2,65 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0f172a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
 }
 
-/* --- OPTIMIZED PRINT CSS --- */
-
+/* --- PRODUCTION A4 PRINT STYLES (MULTI-PAGE SAFE) --- */
 @media print {
   @page {
-    size: A4;
-    margin: 0 !important;
+    size: A4 portrait;
+    margin: 0;
   }
 
+  html,
   body {
+    width: 210mm !important;
+    height: auto !important;
+    min-height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
-    display: flex !important;
-    justify-content: center !important; /* Forces the content to the horizontal center */
-    align-items: flex-start !important;
-    background-color: white;
+    overflow: visible !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  #resume-document {
+  .no-print {
+    display: none !important;
+  }
+
+  #resume-document,
+  #cover-letter-document {
     width: 210mm !important;
-    height: 297mm !important;
-    margin: 0 auto !important; /* 'auto' handles the left/right balance */
-    padding: 0 !important;
-    position: relative !important;
-    transform: scale(1);
-    transform-origin: top center;
+    min-height: 297mm !important;
+    height: auto !important;
+    margin: 0 auto !important;
     box-shadow: none !important;
+    transform: none !important;
+    overflow: visible !important;
+    border-radius: 0 !important;
+  }
+
+  #resume-document section,
+  #cover-letter-document p {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
